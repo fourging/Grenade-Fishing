@@ -31,7 +31,7 @@ namespace GrenadeFishing.Utils
         /// <summary>
         /// 模组日志统一标识前缀，所有日志都会包含此前缀
         /// </summary>
-        private const string Prefix = "[RadialMenu]";
+        private const string Prefix = "[手雷炸鱼]";
 
         /// <summary>
         /// 输出普通信息日志

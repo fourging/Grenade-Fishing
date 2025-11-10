@@ -5,7 +5,7 @@ using System.Reflection;
 using UnityEngine;
 using UnityEngine.Events;
 
-namespace GrenadeFishing
+namespace GrenadeFishing.Utils
 {
 	/// <summary>
 	/// GrenadeExplosionTracker
