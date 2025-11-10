@@ -186,10 +186,10 @@ namespace GrenadeFishing.Utils
 		private static int GetFishCountByLuck(float luck01)
 		{
 			// 幸运值分四档，每档对应不同的数量范围
-			if (luck01 < 0.25f) return UnityEngine.Random.Range(2, 4);  // [2,3] - 低幸运值
-			if (luck01 < 0.50f) return UnityEngine.Random.Range(3, 5);  // [3,4] - 中低幸运值
-			if (luck01 < 0.75f) return UnityEngine.Random.Range(4, 6);  // [4,5] - 中高幸运值
-			return 5;  // 高幸运值，固定生成5条
+			if (luck01 < 0.5f) return UnityEngine.Random.Range(0, 2);  // [0,1] - 低幸运值
+			if (luck01 < 0.75f) return UnityEngine.Random.Range(2, 3);  // [2,3] - 中低幸运值
+			if (luck01 < 0.98f) return UnityEngine.Random.Range(3, 4);  // [3,4] - 中高幸运值
+			return 4;  // 高幸运值，固定生成4条
 		}
 
 		/// <summary>

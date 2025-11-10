@@ -19,6 +19,8 @@ namespace GrenadeFishing
 		private static bool _harmonyPatched;
 		private FishLootService? _fishLoot;
 			private bool _settingsInitialized;
+		private KeyCode _pickupKey = KeyCode.RightShift;
+		private float _pickupRadius = 15f;
 
         void Start()
         {
@@ -57,6 +59,10 @@ namespace GrenadeFishing
         void Update()
         {
             // 无需按键，自动检测
+			if (_pickupKey != KeyCode.None && Input.GetKeyDown(_pickupKey))
+			{
+				ExecuteFishPickup();
+			}
         }
 
         private void EnsureHelpers()
@@ -172,6 +178,9 @@ namespace GrenadeFishing
 				const string kForceMax = "GF_ForceMax";
 				const string kAngle = "GF_RandomAngle";
 				const string kGroup = "GF_SplashGroup";
+				const string kPickupKey = "GF_PickupKey";
+				const string kPickupRadius = "GF_PickupRadius";
+				const string kPickupGroup = "GF_PickupGroup";
 
 				// 添加 UI 控件
 				ModSettingAPI.AddToggle(
@@ -179,6 +188,24 @@ namespace GrenadeFishing
 					"开启爆炸飞溅效果",
 					_fishLoot.enableExplosionSplash,
 					val => { if (_fishLoot != null) _fishLoot.enableExplosionSplash = val; }
+				);
+
+				// 手动拾取相关设置
+				ModSettingAPI.AddKeybinding(
+					kPickupKey,
+					"手动拾取鱼类按键",
+					_pickupKey,
+					KeyCode.RightShift,
+					val => { _pickupKey = val; }
+				);
+
+				ModSettingAPI.AddSlider(
+					kPickupRadius,
+					"手动拾取范围半径",
+					_pickupRadius,
+					new Vector2(9f, 18.0f),
+					val => { _pickupRadius = Mathf.Clamp(val, 0.1f, 3.0f); },
+					2
 				);
 
 				ModSettingAPI.AddSlider(
@@ -252,12 +279,100 @@ namespace GrenadeFishing
 					true
 				);
 
+				ModSettingAPI.AddGroup(
+					kPickupGroup,
+					"拾取设置",
+					new System.Collections.Generic.List<string> { kPickupKey, kPickupRadius },
+					0.6f,
+					false,
+					false
+				);
+
 				_settingsInitialized = true;
 				Debug.Log("[GrenadeFishing] 设置面板初始化完成。");
 			}
 			catch (Exception ex)
 			{
 				Debug.LogWarning($"[GrenadeFishing] 初始化设置 UI 失败：{ex.Message}");
+			}
+		}
+
+		/// <summary>
+		/// 执行一次基于球形范围的鱼类掉落物拾取（TypeID 1097 - 1126）
+		/// </summary>
+		private void ExecuteFishPickup()
+		{
+			var character = CharacterMainControl.Main;
+			if (character == null) return;
+
+			// 计算检测球
+			Vector3 detectionCenter = character.transform.position + Vector3.up * 0.5f + character.CurrentAimDirection * 0.2f;
+			float detectionRadius = Mathf.Max(0.05f, _pickupRadius);
+
+			int interactableLayer = LayerMask.NameToLayer("Interactable");
+			int layerMask = (interactableLayer >= 0) ? (1 << interactableLayer) : (-1);
+
+			Collider[] detectedColliders = new Collider[8];
+			int hitCount = Physics.OverlapSphereNonAlloc(detectionCenter, detectionRadius, detectedColliders, layerMask, QueryTriggerInteraction.Collide);
+
+			// 找最近的可拾取物
+			float closestDistance = 999f;
+			InteractablePickup closestPickup = null;
+
+			for (int i = 0; i < hitCount; i++)
+			{
+				Collider collider = detectedColliders[i];
+				if (collider == null) continue;
+
+				var pickup = collider.GetComponent<InteractablePickup>();
+				if (pickup != null)
+				{
+					float distance = Vector3.Distance(character.transform.position, pickup.transform.position);
+					if (distance < closestDistance)
+					{
+						closestDistance = distance;
+						closestPickup = pickup;
+					}
+				}
+			}
+
+			// 执行拾取（仅鱼类）
+			if (closestPickup != null)
+			{
+				var itemAgent = closestPickup.ItemAgent;
+				if (itemAgent != null)
+				{
+					var baseAgent = itemAgent as ItemAgent;
+					if (baseAgent != null)
+					{
+						Item item = baseAgent.Item;
+						if (item != null)
+						{
+							int typeId = item.TypeID;
+							if (typeId >= 1097 && typeId <= 1126)
+							{
+								bool pickupSuccess = character.PickupItem(item);
+								if (pickupSuccess)
+								{
+									string itemName = item.DisplayName;
+									if (string.IsNullOrEmpty(itemName)) itemName = item.DisplayNameRaw;
+									if (string.IsNullOrEmpty(itemName)) itemName = "物品";
+
+									int stackCount = 1;
+									try
+									{
+										int itemCount = item.StackCount;
+										if (itemCount > 0) stackCount = itemCount;
+									}
+									catch { }
+
+									string pickupMessage = (stackCount > 1) ? $"拾取：{itemName}×{stackCount}" : ("拾取：" + itemName);
+									character.PopText(pickupMessage, -1f);
+								}
+							}
+						}
+					}
+				}
 			}
 		}
 
