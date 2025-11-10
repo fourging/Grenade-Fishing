@@ -192,6 +192,15 @@ namespace GrenadeFishing
 				lastExplosionWasWater = true;
 				return true;
 			}
+			// 若明显高于水面硬阈值，且垂直柱未命中水面，则提前返回，避免后续多余检测
+			if (aboveDryLandHard)
+			{
+				if (diagnosticLogging)
+				{
+					Debug.Log("[WaterRegionHelper] 高于水面硬阈值且未命中垂直水面 -> 提前返回非水体。");
+				}
+				return false;
+			}
 
 			// 3) 垂直方向首碰判定：以“首个命中是否为水体”为准，可过滤部分近水误判
 			{

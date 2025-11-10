@@ -36,17 +36,31 @@ namespace GrenadeFishing
 		[Tooltip("自动扫描频率（秒）")]
 		public float scanInterval = 2f;
 
+		[Tooltip("单次扫描最多新增订阅的数量上限（用于摊平成本）")]
+		public int maxSubscribePerScan = 8;
+
 		[Tooltip("用于匹配手雷组件类型名的关键字（大小写敏感）")]
 		public string grenadeComponentNameHint = "Grenade";
 
 		[Tooltip("尝试订阅的 UnityEvent 字段或属性名（要求为无参 UnityEvent）")]
 		public string explodeUnityEventMemberName = "onExplodeEvent";
 
+		[Header("Diagnostics")]
+		[Tooltip("输出订阅/扫描等诊断信息")]
+		public bool diagnosticLogging = false;
+		[Tooltip("在爆炸时打印附近碰撞体（高开销，仅调试时开启）")]
+		public bool logNearbyCollidersOnExplode = false;
+
 		private float _scanTimer;
 
 		// 跟踪：已订阅的对象 -> (UnityEvent, UnityAction) 便于解除订阅
 		private readonly Dictionary<UnityEngine.Object, (UnityEvent evt, UnityAction action)> _subscriptions =
 			new Dictionary<UnityEngine.Object, (UnityEvent, UnityAction)>();
+
+		// 类型解析与成员访问缓存，避免重复反射
+		private static readonly Dictionary<string, Type> _typeNameCache = new Dictionary<string, Type>();
+		private static readonly Dictionary<Type, Func<Component, UnityEvent>> _eventAccessorCache =
+			new Dictionary<Type, Func<Component, UnityEvent>>();
 
 		private void Awake()
 		{
@@ -117,18 +131,50 @@ namespace GrenadeFishing
 		{
 			try
 			{
-				var behaviours = FindObjectsOfType<MonoBehaviour>();
-				for (int i = 0; i < behaviours.Length; i++)
-				{
-					var mb = behaviours[i];
-					if (mb == null) continue;
-					var t = mb.GetType();
-					if (!t.Name.Contains(grenadeComponentNameHint)) continue;
-					if (_subscriptions.ContainsKey(mb)) continue;
+				int newlySubscribed = 0;
 
-					if (TrySubscribeToNoArgUnityEvent(mb, explodeUnityEventMemberName))
+				// 优先尝试按类型名直接查找（避免全量 MonoBehaviour 枚举）
+				Component[] candidates = null;
+				Type grenadeType = ResolveTypeByName(grenadeComponentNameHint);
+				if (grenadeType != null && typeof(Component).IsAssignableFrom(grenadeType))
+				{
+					var objs = FindObjectsOfType(grenadeType);
+					// 转 Component 数组便于后续处理
+					var list = new List<Component>(objs.Length);
+					for (int i = 0; i < objs.Length; i++)
 					{
-						// 订阅成功
+						if (objs[i] is Component c) list.Add(c);
+					}
+					candidates = list.ToArray();
+				}
+				else
+				{
+					// 回退：扫描 MonoBehaviour，但仅保留名字包含 hint 的对象
+					var behaviours = FindObjectsOfType<MonoBehaviour>();
+					var filtered = new List<Component>(behaviours.Length);
+					for (int i = 0; i < behaviours.Length; i++)
+					{
+						var mb = behaviours[i];
+						if (mb == null) continue;
+						var t = mb.GetType();
+						if (t.Name.Contains(grenadeComponentNameHint))
+						{
+							filtered.Add(mb);
+						}
+					}
+					candidates = filtered.ToArray();
+				}
+
+				// 遍历候选并尝试订阅，限制单次新增订阅数量
+				for (int i = 0; i < candidates.Length; i++)
+				{
+					if (newlySubscribed >= Mathf.Max(1, maxSubscribePerScan)) break;
+					var c = candidates[i];
+					if (c == null) continue;
+					if (_subscriptions.ContainsKey(c)) continue;
+					if (TrySubscribeToNoArgUnityEvent(c, explodeUnityEventMemberName))
+					{
+						newlySubscribed++;
 					}
 				}
 
@@ -141,6 +187,11 @@ namespace GrenadeFishing
 				for (int i = 0; i < dead.Count; i++)
 				{
 					_subscriptions.Remove(dead[i]);
+				}
+
+				if (diagnosticLogging)
+				{
+					Debug.Log($"[GrenadeExplosionTracker] Scan finished. new={newlySubscribed}, totalSubs={_subscriptions.Count}");
 				}
 			}
 			catch (Exception ex)
@@ -183,22 +234,7 @@ namespace GrenadeFishing
 			try
 			{
 				var t = target.GetType();
-				// 先字段，后属性
-				UnityEvent foundEvent = null;
-
-				var field = t.GetField(memberName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-				if (field != null && typeof(UnityEvent).IsAssignableFrom(field.FieldType))
-				{
-					foundEvent = (UnityEvent)field.GetValue(target);
-				}
-				if (foundEvent == null)
-				{
-					var prop = t.GetProperty(memberName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-					if (prop != null && typeof(UnityEvent).IsAssignableFrom(prop.PropertyType))
-					{
-						foundEvent = (UnityEvent)prop.GetValue(target, null);
-					}
-				}
+				UnityEvent foundEvent = GetCachedNoArgUnityEvent(target, t, memberName);
 
 				if (foundEvent == null)
 				{
@@ -209,11 +245,19 @@ namespace GrenadeFishing
 				UnityAction action = () =>
 				{
 					// 调试：列出手雷自身包围盒半径范围内的碰撞体（帮助定位误判）
-					DebugListNearbyColliders(target, target.transform.position);
+					if (logNearbyCollidersOnExplode)
+					{
+						DebugListNearbyColliders(target, target.transform.position);
+					}
 					OnGrenadeExploded(target.transform.position);
 				};
 				foundEvent.AddListener(action);
 				_subscriptions[target] = (foundEvent, action);
+
+				if (diagnosticLogging)
+				{
+					Debug.Log($"[GrenadeExplosionTracker] Subscribed to {t.FullName}.{memberName} on {target.name}");
+				}
 				return true;
 			}
 			catch (Exception ex)
@@ -221,6 +265,63 @@ namespace GrenadeFishing
 				Debug.LogWarning($"[GrenadeExplosionTracker] Subscribe failed on {target}: {ex.Message}");
 				return false;
 			}
+		}
+
+		private static UnityEvent GetCachedNoArgUnityEvent(Component instance, Type type, string memberName)
+		{
+			if (!_eventAccessorCache.TryGetValue(type, out var accessor))
+			{
+				// 构建访问器：优先字段，其次属性
+				UnityEvent Accessor(Component c)
+				{
+					var t = c.GetType();
+					var field = t.GetField(memberName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+					if (field != null && typeof(UnityEvent).IsAssignableFrom(field.FieldType))
+					{
+						return (UnityEvent)field.GetValue(c);
+					}
+					var prop = t.GetProperty(memberName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+					if (prop != null && typeof(UnityEvent).IsAssignableFrom(prop.PropertyType))
+					{
+						return (UnityEvent)prop.GetValue(c, null);
+					}
+					return null;
+				}
+				accessor = Accessor;
+				_eventAccessorCache[type] = accessor;
+			}
+			return accessor(instance);
+		}
+
+		private static Type ResolveTypeByName(string nameHint)
+		{
+			if (string.IsNullOrEmpty(nameHint)) return null;
+			if (_typeNameCache.TryGetValue(nameHint, out var cached)) return cached;
+			Type found = null;
+			var asms = AppDomain.CurrentDomain.GetAssemblies();
+			for (int i = 0; i < asms.Length && found == null; i++)
+			{
+				try
+				{
+					var types = asms[i].GetTypes();
+					for (int j = 0; j < types.Length; j++)
+					{
+						var t = types[j];
+						// 优先精确匹配，其次包含匹配
+						if (t.Name == nameHint || t.FullName == nameHint || t.Name.Contains(nameHint))
+						{
+							found = t;
+							break;
+						}
+					}
+				}
+				catch
+				{
+					// 某些动态程序集可能抛出异常，忽略
+				}
+			}
+			_typeNameCache[nameHint] = found;
+			return found;
 		}
 
 		private void OnGrenadeExploded(Vector3 pos)

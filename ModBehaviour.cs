@@ -63,7 +63,8 @@ namespace GrenadeFishing
             if (_tracker != null)
             {
                 _tracker.enableAutoScanGrenades = true;
-                _tracker.scanInterval = Mathf.Max(0.5f, _tracker.scanInterval);
+				// 保持较低频率的周期扫描（避免0.5s高频扫描）
+				_tracker.scanInterval = Mathf.Max(2.0f, _tracker.scanInterval);
                 _tracker.grenadeComponentNameHint = string.IsNullOrEmpty(_tracker.grenadeComponentNameHint) ? "Grenade" : _tracker.grenadeComponentNameHint;
                 _tracker.explodeUnityEventMemberName = string.IsNullOrEmpty(_tracker.explodeUnityEventMemberName) ? "onExplodeEvent" : _tracker.explodeUnityEventMemberName;
                 _tracker.ScanAndSubscribe();
@@ -72,7 +73,8 @@ namespace GrenadeFishing
             // 调试参数与日志增强
             if (_waterHelper != null)
             {
-                _waterHelper.diagnosticLogging = true;           // 打开诊断日志
+				// 关闭高频调试日志以降低运行时开销（需要定位误判时再临时开启）
+				_waterHelper.diagnosticLogging = false;
                 _waterHelper.nearCheckRadius = 0.4f;             // 收紧近邻半径，减少公路近水误判
                 _waterHelper.verticalHalfExtent = 1.2f;          // 垂直半高（可按需要微调）
                 _waterHelper.sphereCastRadius = Mathf.Max(0.4f, _waterHelper.sphereCastRadius);
