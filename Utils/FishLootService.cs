@@ -19,6 +19,15 @@ namespace GrenadeFishing.Utils
 		[Tooltip("为 true 时：在爆炸点向四周（水平面以上）抛射生成鱼；为 false 时：在玩家附近小范围散落。")]
 		public bool enableExplosionSplash = true;
 
+		[Header("飞溅到岸辅助参数")]
+		[Tooltip("起飞高度 = 玩家Y + 该偏移（仅飞溅模式使用）")]
+		public float splashStartHeightOffsetFromPlayerY = 1.5f;
+		[Tooltip("朝向玩家的权重（0=完全随机方向，1=完全朝向玩家）")]
+		[Range(0f, 1f)]
+		public float splashHomingWeight = 0.6f;
+		[Tooltip("按玩家距离附加力度（每米增加的力度倍数）")]
+		public float splashDistanceForcePerMeter = 0.6f;
+
 		[Serializable]
 		public class FishEntry
 		{
@@ -35,18 +44,6 @@ namespace GrenadeFishing.Utils
 			public int value;
 			public Sprite? icon; // 可为空（异步加载后填充）
 		}
-
-		// 价值分档（单位：货币）
-		private const int Tier1Max = 1000;   // 0 ~ 1000
-		private const int Tier2Max = 3000;   // 1000 ~ 3000
-		private const int Tier3Max = 6000;   // 3000 ~ 6000
-		// >6000 为 Tier4
-
-		// 各档出现概率
-		private const float ProbTier1 = 0.55f; // 0-1000：55%
-		private const float ProbTier2 = 0.30f; // 1000-3000：30%
-		private const float ProbTier3 = 0.10f; // 3000-6000：10%
-		private const float ProbTier4 = 0.05f; // >6000：5%
 
 		// 掉落位置相关
 		[Header("掉落位置与物理")]
@@ -75,58 +72,7 @@ namespace GrenadeFishing.Utils
 		private readonly Dictionary<int, Sprite> _iconCache = new Dictionary<int, Sprite>();
 		private readonly HashSet<int> _iconLoading = new HashSet<int>();
 
-		// 鱼数据表（来自 Docs/现有鱼.txt）
-		private static readonly List<FishEntry> _allFish = new List<FishEntry>
-		{
-			new FishEntry{ displayName = "大头金鱼", typeId = 1123, value = 492 },
-			new FishEntry{ displayName = "棕沙丁鱼", typeId = 1106, value = 497 },
-			new FishEntry{ displayName = "蓝鲭鱼", typeId = 1100, value = 506 },
-			new FishEntry{ displayName = "红金鱼", typeId = 1119, value = 515 },
-			new FishEntry{ displayName = "粉金鱼", typeId = 1114, value = 525 },
-			new FishEntry{ displayName = "红鳍鲷鱼", typeId = 1117, value = 785 },
-			new FishEntry{ displayName = "蓝吊鱼", typeId = 1103, value = 805 },
-			new FishEntry{ displayName = "紫雀鲷鱼", typeId = 1115, value = 814 },
-			new FishEntry{ displayName = "绿刺豚", typeId = 1126, value = 970 },
-			new FishEntry{ displayName = "红九间鱼", typeId = 1118, value = 983 },
-			new FishEntry{ displayName = "蓝雀鲷鱼", typeId = 1098, value = 996 },
-			new FishEntry{ displayName = "白扁鱼", typeId = 1124, value = 1006 },
-			new FishEntry{ displayName = "绿鲷鱼", typeId = 1097, value = 1066 },
-			new FishEntry{ displayName = "白燕鱼", typeId = 1122, value = 1108 },
-			new FishEntry{ displayName = "棕梭鱼", typeId = 1105, value = 1128 },
-			new FishEntry{ displayName = "绿背鳙鱼", typeId = 1109, value = 1578 },
-			new FishEntry{ displayName = "绿胖头鱼", typeId = 1108, value = 1640 },
-			new FishEntry{ displayName = "青南乳鱼", typeId = 1099, value = 1715 },
-			new FishEntry{ displayName = "大眼红鱼", typeId = 1120, value = 1835 },
-			new FishEntry{ displayName = "绿黄鲀", typeId = 1110, value = 2057 },
-			new FishEntry{ displayName = "棕白石鲈", typeId = 1104, value = 2063 },
-			new FishEntry{ displayName = "橙金鳞鱼", typeId = 1113, value = 2979 },
-			new FishEntry{ displayName = "蓝枪鱼", typeId = 1101, value = 3762 },
-			new FishEntry{ displayName = "粉鳍火焰鱼", typeId = 1116, value = 3798 },
-			new FishEntry{ displayName = "黄绿鲷", typeId = 1125, value = 3807 },
-			new FishEntry{ displayName = "蓝旗鱼", typeId = 1102, value = 4107 },
-			new FishEntry{ displayName = "橙青鳍鱼", typeId = 1112, value = 4113 },
-			new FishEntry{ displayName = "蓝猫鲨鱼", typeId = 1111, value = 6084 },
-			new FishEntry{ displayName = "红斑鱼", typeId = 1121, value = 6534 },
-			new FishEntry{ displayName = "黄金鱼", typeId = 1107, value = 12300 },
-		};
-
-		private List<FishEntry> _tier1 = new List<FishEntry>(); // <= 1000
-		private List<FishEntry> _tier2 = new List<FishEntry>(); // (1000, 3000]
-		private List<FishEntry> _tier3 = new List<FishEntry>(); // (3000, 6000]
-		private List<FishEntry> _tier4 = new List<FishEntry>(); // > 6000
-
-		void Awake()
-		{
-			BuildFishTiers();
-		}
-
-		private void BuildFishTiers()
-		{
-			_tier1 = _allFish.Where(f => f.value <= Tier1Max).ToList();
-			_tier2 = _allFish.Where(f => f.value > Tier1Max && f.value <= Tier2Max).ToList();
-			_tier3 = _allFish.Where(f => f.value > Tier2Max && f.value <= Tier3Max).ToList();
-			_tier4 = _allFish.Where(f => f.value > Tier3Max).ToList();
-		}
+		void Awake() { }
 
 		/// <summary>
 		/// 供外部调用：在水体爆炸时执行步骤1（生成待命鱼并预取图标）与步骤3（玩家附近生成真实掉落物）。
@@ -140,7 +86,7 @@ namespace GrenadeFishing.Utils
 			if (enableExplosionSplash)
 			{
 				Log.Info($"开启爆炸飞溅：使用爆炸点抛射 {pending.Count} 条鱼");
-				StartCoroutine(SpawnDropsExplosionSplashCoroutine(pending, explosionWorldPosition));
+				StartCoroutine(SpawnDropsExplosionSplashCoroutine(pending, explosionWorldPosition, player));
 			}
 			else
 			{
@@ -155,21 +101,14 @@ namespace GrenadeFishing.Utils
 		public List<PendingFishData> GeneratePendingFish(CharacterMainControl player)
 		{
 			float luck = GetPlayerLuck01(player);
-			int count = GetFishCountByLuck(luck);
-
-			var result = new List<PendingFishData>(count);
-			for (int i = 0; i < count; i++)
+			var selected = FishGenerator.GenerateByLuck(luck);
+			var result = selected.Select(sel => new PendingFishData
 			{
-				var picked = PickOneFishByValueProbability();
-				if (picked == null) continue;
-				result.Add(new PendingFishData
-				{
-					displayName = picked.displayName,
-					typeId = picked.typeId,
-					value = picked.value,
-					icon = TryGetIconFromCache(picked.typeId)
-				});
-			}
+				displayName = sel.displayName,
+				typeId = sel.typeId,
+				value = sel.value,
+				icon = TryGetIconFromCache(sel.typeId)
+			}).ToList();
 			Log.DebugMsg($"待命鱼名称列表：{string.Join(", ", result.Select(f => f.displayName))}");
 			Debug.Log($"[炸鱼测试] 待命鱼已生成：数量={result.Count}（幸运值={luck:F2}）。");
 			return result;
@@ -185,8 +124,9 @@ namespace GrenadeFishing.Utils
 				yield break;
 			}
 
-			Vector3 playerPos = SafeGetPlayerPosition(player);
-			Log.DebugMsg($"开始生成真实掉落：总计={pending.Count}，玩家位置={playerPos}");
+			Transform center = ResolveMainPlayerCenter(player);
+			Vector3 playerPos = center.position;
+			Log.DebugMsg($"开始生成真实掉落：总计={pending.Count}，中心(玩家)={playerPos}（来源={center.name}）");
 
 			for (int i = 0; i < pending.Count; i++)
 			{
@@ -229,16 +169,16 @@ namespace GrenadeFishing.Utils
 		/// <summary>
 		/// 步骤3（模式B - 爆炸飞溅）：在爆炸点向四周（水平面以上）抛射生成真实掉落物。
 		/// </summary>
-		private IEnumerator SpawnDropsExplosionSplashCoroutine(List<PendingFishData> pending, Vector3 explosionPos)
+		private IEnumerator SpawnDropsExplosionSplashCoroutine(List<PendingFishData> pending, Vector3 explosionPos, CharacterMainControl player)
 		{
 			if (pending == null || pending.Count == 0)
 			{
 				yield break;
 			}
 
-			// 起飞点：爆炸位置对应水面 +1m（若无法找到水面，则使用爆炸点 +1m）
-			Vector3 spawnBase = GetSplashStartFromWaterSurface(explosionPos, 1.0f);
-			Log.DebugMsg($"开始爆炸飞溅掉落：总计={pending.Count}，爆炸点={explosionPos}, 基准={spawnBase}");
+			// 起飞点：使用“玩家Y + 偏移”的高度，XZ 取爆炸点；若无玩家则回退为水面+1m 或 爆炸点+1m
+			Vector3 spawnBase = GetSplashStartFromPlayerHeight(explosionPos, player, splashStartHeightOffsetFromPlayerY);
+			Log.DebugMsg($"开始爆炸飞溅掉落：总计={pending.Count}，爆炸点={explosionPos}, 起飞基准={spawnBase}, 偏移={splashStartHeightOffsetFromPlayerY:F2}, Homing={splashHomingWeight:F2}, DistForce/m={splashDistanceForcePerMeter:F2}");
 
 			for (int i = 0; i < pending.Count; i++)
 			{
@@ -258,17 +198,42 @@ namespace GrenadeFishing.Utils
 
 				if (itemInstance != null)
 				{
-					// 生成水平+向上方向
+					// 基础随机方向（水平 + 向上）
 					Vector2 planar = UnityEngine.Random.insideUnitCircle.normalized;
 					float up = UnityEngine.Random.Range(explosionUpwardBiasMin, explosionUpwardBiasMax);
-					Vector3 dir = new Vector3(planar.x, up, planar.y).normalized;
+					Vector3 randomDir = new Vector3(planar.x, up, planar.y).normalized;
 
-					// 控制力度（不要飞太远）
-					float force = UnityEngine.Random.Range(explosionForceRange.x, explosionForceRange.y);
-					Vector3 dropDir = dir * force;
+					// 朝向玩家的方向（仅水平朝向，叠加同等上仰）
+					Vector3 homingDir = randomDir;
+					if (player != null)
+					{
+						Vector3 playerPos = SafeGetPlayerPosition(player);
+						Vector3 toPlayer = playerPos - spawnBase;
+						Vector2 toPlayerXZ = new Vector2(toPlayer.x, toPlayer.z);
+						if (toPlayerXZ.sqrMagnitude > 0.0001f)
+						{
+							Vector2 homingPlanar = toPlayerXZ.normalized;
+							homingDir = new Vector3(homingPlanar.x, up, homingPlanar.y).normalized;
+						}
+					}
+
+					// 方向混合：随机 与 朝向玩家
+					float w = Mathf.Clamp01(splashHomingWeight);
+					Vector3 finalDir = (randomDir * (1f - w) + homingDir * w).normalized;
+
+					// 力度 = 基础随机 + 距离加力（上限受最大力度限制）
+					float baseForce = UnityEngine.Random.Range(explosionForceRange.x, explosionForceRange.y);
+					float extra = 0f;
+					if (player != null)
+					{
+						float dist = Vector3.Distance(spawnBase, SafeGetPlayerPosition(player));
+						extra = Mathf.Max(0f, dist * Mathf.Max(0f, splashDistanceForcePerMeter));
+					}
+					float force = Mathf.Clamp(baseForce + extra, explosionForceRange.x, explosionForceRange.y);
+					Vector3 dropDir = finalDir * force;
 
 					itemInstance.Drop(spawnBase, true, dropDir, explosionRandomAngle);
-					Log.Info($"[飞溅] 已生成掉落：{data.displayName}({data.typeId}) @ {spawnBase}, Dir={dir}, Force={force:F2}");
+					Log.Info($"[飞溅] 已生成掉落：{data.displayName}({data.typeId}) @ {spawnBase}, BaseF={baseForce:F2}, ExtraF={extra:F2}, Force={force:F2}, Up={up:F2}, w={w:F2}");
 				}
 				else
 				{
@@ -295,6 +260,18 @@ namespace GrenadeFishing.Utils
 			}
 			// 兜底：使用爆炸点 + 指定高度
 			return explosionPos + Vector3.up * Mathf.Max(0f, heightAbove);
+		}
+
+		private Vector3 GetSplashStartFromPlayerHeight(Vector3 explosionPos, CharacterMainControl player, float heightOffset)
+		{
+			if (player != null)
+			{
+				Vector3 playerPos = SafeGetPlayerPosition(player);
+				float startY = playerPos.y + Mathf.Max(0f, heightOffset);
+				return new Vector3(explosionPos.x, startY, explosionPos.z);
+			}
+			// 无玩家时回退到水面+1m 或 爆炸点+1m
+			return GetSplashStartFromWaterSurface(explosionPos, 1.0f);
 		}
 
 		private IEnumerator PrefetchIconsCoroutine(List<PendingFishData> pending)
@@ -376,39 +353,6 @@ namespace GrenadeFishing.Utils
 			return 5;
 		}
 
-		private FishEntry? PickOneFishByValueProbability()
-		{
-			float r = UnityEngine.Random.value;
-			List<FishEntry> source;
-
-			if (r < ProbTier1)
-			{
-				source = _tier1;
-			}
-			else if (r < ProbTier1 + ProbTier2)
-			{
-				source = _tier2;
-			}
-			else if (r < ProbTier1 + ProbTier2 + ProbTier3)
-			{
-				source = _tier3;
-			}
-			else
-			{
-				source = _tier4;
-			}
-
-			if (source == null || source.Count == 0)
-			{
-				// 若某档为空，回退至全库
-				source = _allFish;
-			}
-
-			if (source.Count == 0) return null;
-			int idx = UnityEngine.Random.Range(0, source.Count);
-			return source[idx];
-		}
-
 		private Vector3 GetRandomNearPlayerPosition(Vector3 playerPos)
 		{
 			// 随机水平位移（移除地面检测，直接以玩家高度为基准），使用小范围散落
@@ -417,6 +361,26 @@ namespace GrenadeFishing.Utils
 			return spawn;
 		}
 
+		private Transform ResolveMainPlayerCenter(CharacterMainControl player)
+		{
+			// 优先使用带有 "Player" 标签的对象
+			try
+			{
+				var tagged = GameObject.FindGameObjectWithTag("Player");
+				if (tagged != null)
+				{
+					return tagged.transform;
+				}
+			}
+			catch { /* ignore tag absent */ }
+
+			// 回退：使用传入的 player
+			if (player != null) return player.transform;
+
+			// 最后兜底：使用场景中第一个 CharacterMainControl
+			var any = FindObjectOfType<CharacterMainControl>();
+			return any != null ? any.transform : this.transform;
+		}
 		private static Vector3 SafeGetPlayerPosition(CharacterMainControl player)
 		{
 			try

@@ -136,7 +136,7 @@ namespace GrenadeFishing
 			// 步骤1 + 步骤3：生成待命鱼并在玩家附近生成真实掉落物（跳过第二步动画）
 			if (_fishLoot != null)
 			{
-				var player = FindObjectOfType<CharacterMainControl>();
+				var player = CharacterMainControl.Main;
 				_fishLoot.HandleWaterExplosion(worldPos, player);
 			}
         }
@@ -296,18 +296,6 @@ namespace GrenadeFishing
 				CharacterMainControl.OnMainCharacterStartUseItem -= OnItemUsed;
                 _subscribed = false;
             }
-        }
-
-        /// <summary>
-        /// GUI显示状态信息
-        /// </summary>
-        void OnGUI()
-        {
-            GUILayout.BeginArea(new Rect(10, 10, 300, 100));
-            GUILayout.Label("炸鱼测试模组", GUI.skin.box);
-            GUILayout.Space(10);
-            GUILayout.Label("自动检测手雷爆炸落点并打印是否为水体");
-            GUILayout.EndArea();
         }
     }
 }
