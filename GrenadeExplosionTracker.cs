@@ -62,6 +62,11 @@ namespace GrenadeFishing
 		private static readonly Dictionary<Type, Func<Component, UnityEvent>> _eventAccessorCache =
 			new Dictionary<Type, Func<Component, UnityEvent>>();
 
+		// 扫描过程的临时缓冲，减少 GC 分配
+		private static readonly List<Component> _scanCandidates = new List<Component>(128);
+		private static readonly List<UnityEngine.Object> _deadSubs = new List<UnityEngine.Object>(32);
+		private static Collider[] _nearbyDebugBuffer; // 仅在启用调试时使用
+
 		private void Awake()
 		{
 			if (SpawnFishAt == null)
@@ -132,26 +137,22 @@ namespace GrenadeFishing
 			try
 			{
 				int newlySubscribed = 0;
+				_scanCandidates.Clear();
 
 				// 优先尝试按类型名直接查找（避免全量 MonoBehaviour 枚举）
-				Component[] candidates = null;
 				Type grenadeType = ResolveTypeByName(grenadeComponentNameHint);
 				if (grenadeType != null && typeof(Component).IsAssignableFrom(grenadeType))
 				{
 					var objs = FindObjectsOfType(grenadeType);
-					// 转 Component 数组便于后续处理
-					var list = new List<Component>(objs.Length);
 					for (int i = 0; i < objs.Length; i++)
 					{
-						if (objs[i] is Component c) list.Add(c);
+						if (objs[i] is Component c) _scanCandidates.Add(c);
 					}
-					candidates = list.ToArray();
 				}
 				else
 				{
 					// 回退：扫描 MonoBehaviour，但仅保留名字包含 hint 的对象
 					var behaviours = FindObjectsOfType<MonoBehaviour>();
-					var filtered = new List<Component>(behaviours.Length);
 					for (int i = 0; i < behaviours.Length; i++)
 					{
 						var mb = behaviours[i];
@@ -159,17 +160,16 @@ namespace GrenadeFishing
 						var t = mb.GetType();
 						if (t.Name.Contains(grenadeComponentNameHint))
 						{
-							filtered.Add(mb);
+							_scanCandidates.Add(mb);
 						}
 					}
-					candidates = filtered.ToArray();
 				}
 
 				// 遍历候选并尝试订阅，限制单次新增订阅数量
-				for (int i = 0; i < candidates.Length; i++)
+				for (int i = 0; i < _scanCandidates.Count; i++)
 				{
 					if (newlySubscribed >= Mathf.Max(1, maxSubscribePerScan)) break;
-					var c = candidates[i];
+					var c = _scanCandidates[i];
 					if (c == null) continue;
 					if (_subscriptions.ContainsKey(c)) continue;
 					if (TrySubscribeToNoArgUnityEvent(c, explodeUnityEventMemberName))
@@ -179,14 +179,14 @@ namespace GrenadeFishing
 				}
 
 				// 清理失效对象
-				var dead = new List<UnityEngine.Object>();
+				_deadSubs.Clear();
 				foreach (var kv in _subscriptions)
 				{
-					if (kv.Key == null) dead.Add(kv.Key);
+					if (kv.Key == null) _deadSubs.Add(kv.Key);
 				}
-				for (int i = 0; i < dead.Count; i++)
+				for (int i = 0; i < _deadSubs.Count; i++)
 				{
-					_subscriptions.Remove(dead[i]);
+					_subscriptions.Remove(_deadSubs[i]);
 				}
 
 				if (diagnosticLogging)
@@ -247,7 +247,7 @@ namespace GrenadeFishing
 					// 调试：列出手雷自身包围盒半径范围内的碰撞体（帮助定位误判）
 					if (logNearbyCollidersOnExplode)
 					{
-						DebugListNearbyColliders(target, target.transform.position);
+						DebugListNearbyCollidersNonAlloc(target, target.transform.position);
 					}
 					OnGrenadeExploded(target.transform.position);
 				};
@@ -329,7 +329,7 @@ namespace GrenadeFishing
 			NotifyExplosion(pos);
 		}
 
-		private static void DebugListNearbyColliders(Component source, Vector3 pos)
+		private static void DebugListNearbyCollidersNonAlloc(Component source, Vector3 pos)
 		{
 			try
 			{
@@ -344,10 +344,14 @@ namespace GrenadeFishing
 					radius = Mathf.Max(b.extents.x, Mathf.Max(b.extents.y, b.extents.z)) + 0.2f;
 				}
 
-				var list = Physics.OverlapSphere(center, radius, ~0, QueryTriggerInteraction.Collide);
-				for (int i = 0; i < list.Length; i++)
+				if (_nearbyDebugBuffer == null || _nearbyDebugBuffer.Length < 64)
 				{
-					var c = list[i];
+					_nearbyDebugBuffer = new Collider[64];
+				}
+				int count = Physics.OverlapSphereNonAlloc(center, radius, _nearbyDebugBuffer, ~0, QueryTriggerInteraction.Collide);
+				for (int i = 0; i < count; i++)
+				{
+					var c = _nearbyDebugBuffer[i];
 					if (c == null) continue;
 					Debug.Log($"手雷爆炸于碰撞箱：{c.gameObject.name} / layer: {LayerMask.LayerToName(c.gameObject.layer)}");
 				}

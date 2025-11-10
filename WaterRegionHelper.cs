@@ -46,6 +46,7 @@ namespace GrenadeFishing
 
 		private int waterLayer = -1;
 		private LayerMask waterMask;
+		private int solidMaskCache;
 		[Tooltip("额外判定为水体的图层名列表（可选），例如：\"WaterVolume\",\"River\"")]
 		public string[] extraWaterLayerNames = Array.Empty<string>();
 
@@ -99,6 +100,9 @@ namespace GrenadeFishing
 			{
 				Debug.Log($"[WaterRegionHelper] 初始化图层掩码: mask={waterMask}, base='Water'({waterLayer}), extra=[{string.Join(",", extraWaterLayerNames ?? Array.Empty<string>())}]");
 			}
+
+			// 预计算“非水体遮挡”掩码，避免后续每次计算
+			solidMaskCache = ~waterMask;
 		}
 
 		/// <summary>
@@ -602,9 +606,8 @@ namespace GrenadeFishing
 			if (dist <= 0.001f) return false;
 			dir /= dist;
 
-			// 非水体遮挡掩码：所有层减去水层
-			int solidMask = ~waterMask;
-			bool blocked = Physics.Raycast(from, dir, dist, solidMask, QueryTriggerInteraction.Collide);
+			// 使用预计算的非水体遮挡掩码
+			bool blocked = Physics.Raycast(from, dir, dist, solidMaskCache, QueryTriggerInteraction.Collide);
 			return blocked;
 		}
 	}
