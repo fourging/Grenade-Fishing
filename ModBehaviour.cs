@@ -13,10 +13,12 @@ namespace GrenadeFishing
     /// </summary>
     public class ModBehaviour : Duckov.Modding.ModBehaviour
     {
-        private GrenadeExplosionTracker _tracker;
-        private WaterRegionHelper _waterHelper;
+        private GrenadeExplosionTracker? _tracker;
+        private WaterRegionHelper? _waterHelper;
         private bool _subscribed;
 		private static bool _harmonyPatched;
+		private FishLootService? _fishLoot;
+			private bool _settingsInitialized;
 
         void Start()
         {
@@ -78,7 +80,22 @@ namespace GrenadeFishing
                 {
                     _tracker = host.AddComponent<GrenadeExplosionTracker>();
                 }
+				if (_fishLoot == null)
+				{
+					_fishLoot = host.AddComponent<FishLootService>();
+				}
             }
+			else
+			{
+				// 若已存在，则确保有掉落服务
+				_fishLoot = FindObjectOfType<FishLootService>();
+				if (_fishLoot == null)
+				{
+					var host = new GameObject("GrenadeFishingRuntime");
+					DontDestroyOnLoad(host);
+					_fishLoot = host.AddComponent<FishLootService>();
+				}
+			}
 
             // 启用自动扫描手雷并立即进行一次扫描
             if (_tracker != null)
@@ -103,6 +120,9 @@ namespace GrenadeFishing
 
                 Debug.Log($"[炸鱼测试] 水体检测配置：nearR={_waterHelper.nearCheckRadius:F2}, halfH={_waterHelper.verticalHalfExtent:F2}, sphereR={_waterHelper.sphereCastRadius:F2}, rayDepth={_waterHelper.raycastDepth:F2}, colliders={_waterHelper.GetCachedWaterColliders().Count}, bounds={_waterHelper.GetCachedWaterBounds().Count}");
             }
+
+			// 初始化 ModSetting UI（若可用）
+			TryInitSettingsUI();
         }
 
         private void HandleAnyExplosion(Vector3 worldPos, bool wasWater)
@@ -113,7 +133,133 @@ namespace GrenadeFishing
         private void HandleWaterExplosion(Vector3 worldPos)
         {
             Debug.Log($"[炸鱼测试] 检测到水体爆炸点（可出鱼）: X={worldPos.x:F2}, Y={worldPos.y:F2}, Z={worldPos.z:F2}");
+			// 步骤1 + 步骤3：生成待命鱼并在玩家附近生成真实掉落物（跳过第二步动画）
+			if (_fishLoot != null)
+			{
+				var player = FindObjectOfType<CharacterMainControl>();
+				_fishLoot.HandleWaterExplosion(worldPos, player);
+			}
         }
+
+		protected override void OnAfterSetup()
+		{
+			// Mod 安装完成后尝试初始化设置 UI（兼容 ModSetting 先后加载顺序）
+			TryInitSettingsUI();
+		}
+
+		private void TryInitSettingsUI()
+		{
+			if (_settingsInitialized) return;
+			try
+			{
+				if (!ModSettingAPI.Init(info)) return;
+				if (_fishLoot == null)
+				{
+					_fishLoot = FindObjectOfType<FishLootService>();
+					if (_fishLoot == null)
+					{
+						var host = new GameObject("GrenadeFishingRuntime");
+						DontDestroyOnLoad(host);
+						_fishLoot = host.AddComponent<FishLootService>();
+					}
+				}
+
+				// 定义键
+				const string kToggleSplash = "GF_EnableSplash";
+				const string kUpMin = "GF_UpBiasMin";
+				const string kUpMax = "GF_UpBiasMax";
+				const string kForceMin = "GF_ForceMin";
+				const string kForceMax = "GF_ForceMax";
+				const string kAngle = "GF_RandomAngle";
+				const string kGroup = "GF_SplashGroup";
+
+				// 添加 UI 控件
+				ModSettingAPI.AddToggle(
+					kToggleSplash,
+					"开启爆炸飞溅效果",
+					_fishLoot.enableExplosionSplash,
+					val => { if (_fishLoot != null) _fishLoot.enableExplosionSplash = val; }
+				);
+
+				ModSettingAPI.AddSlider(
+					kUpMin,
+					"飞溅向上分量最小值",
+					_fishLoot.explosionUpwardBiasMin,
+					new Vector2(0.1f, 0.95f),
+					val =>
+					{
+						if (_fishLoot == null) return;
+						_fishLoot.explosionUpwardBiasMin = Mathf.Clamp(val, 0.0f, _fishLoot.explosionUpwardBiasMax);
+					},
+					2
+				);
+
+				ModSettingAPI.AddSlider(
+					kUpMax,
+					"飞溅向上分量最大值",
+					_fishLoot.explosionUpwardBiasMax,
+					new Vector2(0.15f, 1.0f),
+					val =>
+					{
+						if (_fishLoot == null) return;
+						_fishLoot.explosionUpwardBiasMax = Mathf.Clamp(val, _fishLoot.explosionUpwardBiasMin, 1.0f);
+					},
+					2
+				);
+
+				ModSettingAPI.AddSlider(
+					kForceMin,
+					"飞溅力度最小值",
+					_fishLoot.explosionForceRange.x,
+					new Vector2(2f, 30f),
+					val =>
+					{
+						if (_fishLoot == null) return;
+						_fishLoot.explosionForceRange.x = Mathf.Min(val, _fishLoot.explosionForceRange.y - 0.1f);
+					},
+					1
+				);
+
+				ModSettingAPI.AddSlider(
+					kForceMax,
+					"飞溅力度最大值",
+					_fishLoot.explosionForceRange.y,
+					new Vector2(3f, 35f),
+					val =>
+					{
+						if (_fishLoot == null) return;
+						_fishLoot.explosionForceRange.y = Mathf.Max(val, _fishLoot.explosionForceRange.x + 0.1f);
+					},
+					1
+				);
+
+				ModSettingAPI.AddSlider(
+					kAngle,
+					"随机旋转角度",
+					_fishLoot.explosionRandomAngle,
+					new Vector2(0f, 360f),
+					val => { if (_fishLoot != null) _fishLoot.explosionRandomAngle = val; },
+					0
+				);
+
+				// 分组显示
+				ModSettingAPI.AddGroup(
+					kGroup,
+					"爆炸飞溅参数",
+					new System.Collections.Generic.List<string> { kToggleSplash, kUpMin, kUpMax, kForceMin, kForceMax, kAngle },
+					0.7f,
+					false,
+					true
+				);
+
+				_settingsInitialized = true;
+				Debug.Log("[GrenadeFishing] 设置面板初始化完成。");
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning($"[GrenadeFishing] 初始化设置 UI 失败：{ex.Message}");
+			}
+		}
 
 		private void OnItemUsed(Item item)
 		{

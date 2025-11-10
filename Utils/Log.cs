@@ -26,7 +26,7 @@ namespace GrenadeFishing.Utils
         /// <summary>
         /// 是否启用日志输出（全局开关）
         /// </summary>
-        public static bool Enabled = false;
+        public static bool Enabled = true;
 
         /// <summary>
         /// 模组日志统一标识前缀，所有日志都会包含此前缀

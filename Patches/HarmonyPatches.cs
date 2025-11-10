@@ -12,7 +12,7 @@ public static class ExplosionManagerPatch
 	{
 		try
 		{
-			GrenadeFishing.GrenadeExplosionTracker.NotifyExplosion(center);
+			GrenadeFishing.Utils.GrenadeExplosionTracker.NotifyExplosion(center);
 		}
 		catch (Exception ex)
 		{
