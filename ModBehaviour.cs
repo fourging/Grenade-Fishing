@@ -3,6 +3,8 @@ using UnityEngine;
 using Duckov.Modding;
 using Duckov.UI;
 using GrenadeFishing.Utils;
+using ItemStatsSystem;
+using HarmonyLib;
 
 namespace GrenadeFishing
 {
@@ -14,10 +16,27 @@ namespace GrenadeFishing
         private GrenadeExplosionTracker _tracker;
         private WaterRegionHelper _waterHelper;
         private bool _subscribed;
+		private static bool _harmonyPatched;
 
         void Start()
         {
             Debug.Log("[炸鱼测试] Mod已加载。自动检测手雷爆炸并打印是否为水体炸鱼点。");
+
+			// 初始化 Harmony 补丁（全局爆炸入口 Hook）
+			if (!_harmonyPatched)
+			{
+				try
+				{
+					var harmony = new Harmony("com.duckovmods.grenadefishing");
+					harmony.PatchAll();
+					_harmonyPatched = true;
+					Debug.Log("[炸鱼测试] Harmony 补丁已应用（ExplosionManager.CreateExplosion -> NotifyExplosion）。");
+				}
+				catch (Exception ex)
+				{
+					Debug.LogWarning($"[炸鱼测试] Harmony 补丁应用失败: {ex.Message}");
+				}
+			}
 
             // 确保场景中存在水体判定与爆炸跟踪组件
             EnsureHelpers();
@@ -27,6 +46,8 @@ namespace GrenadeFishing
             {
                 GrenadeExplosionTracker.OnAnyExplosion += HandleAnyExplosion;
                 GrenadeExplosionTracker.OnWaterExplosion += HandleWaterExplosion;
+				// 订阅：主角开始使用物品（事件驱动触发一次性订阅，避免轮询）
+				CharacterMainControl.OnMainCharacterStartUseItem += OnItemUsed;
                 _subscribed = true;
             }
         }
@@ -62,12 +83,12 @@ namespace GrenadeFishing
             // 启用自动扫描手雷并立即进行一次扫描
             if (_tracker != null)
             {
-                _tracker.enableAutoScanGrenades = true;
-				// 保持较低频率的周期扫描（避免0.5s高频扫描）
-				_tracker.scanInterval = Mathf.Max(2.0f, _tracker.scanInterval);
+				// 改为事件驱动为主：默认关闭轮询，必要时再开启为兜底
+				_tracker.enableAutoScanGrenades = false;
                 _tracker.grenadeComponentNameHint = string.IsNullOrEmpty(_tracker.grenadeComponentNameHint) ? "Grenade" : _tracker.grenadeComponentNameHint;
                 _tracker.explodeUnityEventMemberName = string.IsNullOrEmpty(_tracker.explodeUnityEventMemberName) ? "onExplodeEvent" : _tracker.explodeUnityEventMemberName;
-                _tracker.ScanAndSubscribe();
+				// 启动时直接尝试订阅已存在的 Grenade（直连 UnityEvent，无反射）
+				_tracker.SubscribeExistingGrenadesDirect(8);
             }
 
             // 调试参数与日志增强
@@ -94,12 +115,39 @@ namespace GrenadeFishing
             Debug.Log($"[炸鱼测试] 检测到水体爆炸点（可出鱼）: X={worldPos.x:F2}, Y={worldPos.y:F2}, Z={worldPos.z:F2}");
         }
 
+		private void OnItemUsed(Item item)
+		{
+			if (item == null) return;
+			try
+			{
+				var tags = item.Tags;
+				// 以“Explosive”为主，兼容“Grenade/Throwable”等潜在命名
+				bool isExplosive =
+					(tags != null) && (
+						tags.Contains("Explosive") ||
+						tags.Contains("Grenade") ||
+						tags.Contains("Throwable")
+					);
+
+				if (isExplosive && _tracker != null)
+				{
+					// 延迟一小段时间，等待 Grenade 实例化后进行直连订阅
+					_tracker.RequestOneShotDirectSubscribe(0.05f, 16);
+				}
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning($"[炸鱼测试] OnItemUsed 处理失败: {ex.Message}");
+			}
+		}
+
         private void OnDestroy()
         {
             if (_subscribed)
             {
                 GrenadeExplosionTracker.OnAnyExplosion -= HandleAnyExplosion;
                 GrenadeExplosionTracker.OnWaterExplosion -= HandleWaterExplosion;
+				CharacterMainControl.OnMainCharacterStartUseItem -= OnItemUsed;
                 _subscribed = false;
             }
         }

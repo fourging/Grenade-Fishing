@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections;
 using System.Reflection;
 using UnityEngine;
 using UnityEngine.Events;
@@ -198,6 +199,64 @@ namespace GrenadeFishing
 			{
 				Debug.LogWarning($"[GrenadeExplosionTracker] Scan failed: {ex.Message}");
 			}
+		}
+
+		/// <summary>
+		/// 直接订阅场景中所有 Grenade 的 onExplodeEvent（无需反射）。
+		/// </summary>
+		public int SubscribeExistingGrenadesDirect(int maxCount = 2147483647)
+		{
+			int added = 0;
+			try
+			{
+				var grenades = GameObject.FindObjectsOfType<Grenade>();
+				for (int i = 0; i < grenades.Length; i++)
+				{
+					if (added >= maxCount) break;
+					var g = grenades[i];
+					if (g == null) continue;
+					if (_subscriptions.ContainsKey(g)) continue;
+					var evt = g.onExplodeEvent;
+					if (evt == null) continue;
+					UnityAction action = () =>
+					{
+						if (logNearbyCollidersOnExplode)
+						{
+							DebugListNearbyCollidersNonAlloc(g, g.transform.position);
+						}
+						OnGrenadeExploded(g.transform.position);
+					};
+					evt.AddListener(action);
+					_subscriptions[g] = (evt, action);
+					added++;
+				}
+			}
+			catch (Exception ex)
+			{
+				Debug.LogWarning($"[GrenadeExplosionTracker] Direct subscribe failed: {ex.Message}");
+			}
+			if (diagnosticLogging)
+			{
+				Debug.Log($"[GrenadeExplosionTracker] Direct subscribed grenades: +{added}, totalSubs={_subscriptions.Count}");
+			}
+			return added;
+		}
+
+		/// <summary>
+		/// 请求一次性延迟直接订阅（适合在“开始使用爆炸物”后一小段时间执行，避免轮询）。
+		/// </summary>
+		public void RequestOneShotDirectSubscribe(float delaySeconds = 0.05f, int maxCount = 16)
+		{
+			StartCoroutine(OneShotDirectSubscribe(delaySeconds, maxCount));
+		}
+
+		private IEnumerator OneShotDirectSubscribe(float delaySeconds, int maxCount)
+		{
+			if (delaySeconds > 0f)
+			{
+				yield return new WaitForSeconds(delaySeconds);
+			}
+			SubscribeExistingGrenadesDirect(maxCount);
 		}
 
 		/// <summary>
