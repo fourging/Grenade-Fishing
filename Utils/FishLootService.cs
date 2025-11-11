@@ -130,7 +130,7 @@ namespace GrenadeFishing.Utils
 		        icon = TryGetIconFromCache(sel.typeId)
 		    }).ToList();
 		    L.DebugMsg($"待命鱼名称列表：{string.Join(", ", result.Select(f => f.displayName))}");
-		    L.Info($"[炸鱼测试] 待命鱼已生成：数量={result.Count}（幸运值={luck:F2}）。");
+		    L.Info($" 待命鱼已生成：数量={result.Count}（幸运值={luck:F2}）。");
 		    return result;
 		}
 

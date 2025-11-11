@@ -151,25 +151,6 @@ namespace GrenadeFishing.Utils
         {
             // 添加调试日志
             L.DebugMsg($"[炸鱼保底调试] GenerateByLuck被调用，手雷价格={grenadeCost}");
-
-            // 适度的玩家反馈（幽默/调侃）
-            try
-            {
-                if (CharacterMainControl.Main != null)
-                {
-                    speakup.ShowRandomDialogue(
-                        CharacterMainControl.Main.transform,
-                        0.7f,
-                        LocalizationHelper.GetFormatted("Fish_Start_1", grenadeCost),
-                        LocalizationHelper.Get("Fish_Start_2"),
-                        LocalizationHelper.Get("Fish_Start_3")
-                    );
-                }
-            }
-            catch (Exception ex)
-            {
-                L.Warn("[炸鱼语音] 预启动语音播放失败：" + ex.Message, ex);
-            }
             
             // 检查保底机制（在随机生成之前）
             var guaranteedFish = CheckGuaranteedFish(grenadeCost);
@@ -287,30 +268,6 @@ namespace GrenadeFishing.Utils
                             L.Warn("[炸鱼语音] 奇迹语音播放失败：" + ex.Message, ex);
                         }
                     }
-                    else
-                    {
-                        var alt = TryFindAlternativeUnderCap(miracleFish, 3, totalValueCap);
-                        if (alt != null)
-                        {
-                            results.Add(alt);
-                            attemptsLeft = Math.Max(0, attemptsLeft - 1);
-
-                            try
-                            {
-                                if (CharacterMainControl.Main != null)
-                                {
-                                    speakup.ShowRandomDialogue(CharacterMainControl.Main.transform, 0.6f,
-                                        LocalizationHelper.GetFormatted("Fish_Miracle_Replaced", alt.displayName)
-                                    );
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                L.Warn("[炸鱼语音] 奇迹替代语音失败：" + ex.Message, ex);
-                            }
-                        }
-                        // 否则放弃奇迹（保持 attemptsLeft）
-                    }
                 }
             }
             // ------------------------------------
@@ -367,17 +324,7 @@ namespace GrenadeFishing.Utils
                 // 语音提示：针对首条产出与大鱼给出独特提示，避免过度刷屏
                 try
                 {
-                    if (CharacterMainControl.Main != null)
-                    {
-                        if (producedCount == 0)
-                        {
-                            speakup.ShowRandomDialogue(CharacterMainControl.Main.transform, 0.6f,
-                                LocalizationHelper.GetFormatted("Fish_First_1", chosen.displayName),
-                                LocalizationHelper.Get("Fish_First_2")
-                            );
-                        }
-
-                        if (chosen.value > 6000)
+                    if (CharacterMainControl.Main != null && chosen.value > 6000)
                         {
                             // 大鱼单独强调
                             speakup.ShowRandomDialogue(CharacterMainControl.Main.transform, 0.5f,
@@ -385,7 +332,6 @@ namespace GrenadeFishing.Utils
                                 LocalizationHelper.Get("Fish_Big_2")
                             );
                         }
-                    }
                 }
                 catch (Exception ex)
                 {
