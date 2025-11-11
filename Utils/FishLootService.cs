@@ -15,6 +15,16 @@ namespace GrenadeFishing.Utils
 	/// </summary>
 	public class FishLootService : MonoBehaviour
 	{
+		// 日志模块
+		private static readonly GrenadeFishing.Utils.Logger L = GrenadeFishing.Utils.Log.GetLogger();
+		// 在类初始化时，由你定义的局部布尔变量控制该文件日志：
+		private static bool LocalLogs = true; // 你可以在别处修改这个变量
+		static FishLootService()
+		{
+			L.SetEnabled(LocalLogs); // 一次设置即可
+		}
+
+		
 		[Header("爆炸飞溅开关")]
 		[Tooltip("为 true 时：在爆炸点向四周（水平面以上）抛射生成鱼；为 false 时：在玩家附近小范围散落。")]
 		public bool enableExplosionSplash = true;
@@ -85,12 +95,12 @@ namespace GrenadeFishing.Utils
 			// 生成真实掉落物（根据开关选择模式）
 			if (enableExplosionSplash)
 			{
-				Log.Info($"开启爆炸飞溅：使用爆炸点抛射 {pending.Count} 条鱼");
+				L.Info($"开启爆炸飞溅：使用爆炸点抛射 {pending.Count} 条鱼");
 				StartCoroutine(SpawnDropsExplosionSplashCoroutine(pending, explosionWorldPosition, player));
 			}
 			else
 			{
-				Log.Info($"关闭爆炸飞溅：在玩家附近散落 {pending.Count} 条鱼");
+				L.Info($"关闭爆炸飞溅：在玩家附近散落 {pending.Count} 条鱼");
 				StartCoroutine(SpawnDropsAroundPlayerCoroutine(pending, player));
 			}
 		}
@@ -100,29 +110,32 @@ namespace GrenadeFishing.Utils
 		/// </summary>
 		public List<PendingFishData> GeneratePendingFish(CharacterMainControl player)
 		{
-			float luck = GetPlayerLuck01(player);
-			int grenadeCost = GrenadePriceTracker.GetLastGrenadeValueOr(0);
-			var tier = FishGenerator.ChooseTierByCost(grenadeCost);
-			// 可选：一次爆炸限制总价值（例如 sqrt(cost)*k 或 固定上限）
-			// 我这里示例使用 cost 的平方根乘以 50 作为 cap（你可以微调或移除）
-			int totalValueCap = Mathf.RoundToInt(Mathf.Sqrt(grenadeCost) * 50f);
+		    float luck = GetPlayerLuck01(player);
+		    int grenadeCost = GrenadePriceTracker.GetLastGrenadeValueOr(0);
+		    L.DebugMsg($"[炸鱼保底调试] GeneratePendingFish: 获取到的手雷价格={grenadeCost}");
+		    
+		    // 可选：一次爆炸限制总价值（例如 sqrt(cost)*k 或 固定上限）
+		    // 我这里示例使用 cost 的平方根乘以 50 作为 cap（你可以微调或移除）
+		    int totalValueCap = Mathf.RoundToInt(Mathf.Sqrt(grenadeCost) * 50f);
 
-			var selected = FishGenerator.GenerateByLuck(luck, tier, totalValueCap);
+		    // 使用带 grenadeCost 的重载，以便触发保底机制
+		    L.DebugMsg($"[炸鱼保底调试] GeneratePendingFish: 调用FishGenerator.GenerateByLuck，参数：luck={luck:F2}, grenadeCost={grenadeCost}, totalValueCap={totalValueCap}");
+		    var selected = FishGenerator.GenerateByLuck(luck, grenadeCost, totalValueCap);
 
-			var result = selected.Select(sel => new PendingFishData
-			{
-				displayName = sel.displayName,
-				typeId = sel.typeId,
-				value = sel.value,
-				icon = TryGetIconFromCache(sel.typeId)
-			}).ToList();
-			Log.DebugMsg($"待命鱼名称列表：{string.Join(", ", result.Select(f => f.displayName))}");
-			Debug.Log($"[炸鱼测试] 待命鱼已生成：数量={result.Count}（幸运值={luck:F2}）。");
-			return result;
+		    var result = selected.Select(sel => new PendingFishData
+		    {
+		        displayName = sel.displayName,
+		        typeId = sel.typeId,
+		        value = sel.value,
+		        icon = TryGetIconFromCache(sel.typeId)
+		    }).ToList();
+		    L.DebugMsg($"待命鱼名称列表：{string.Join(", ", result.Select(f => f.displayName))}");
+		    L.Info($"[炸鱼测试] 待命鱼已生成：数量={result.Count}（幸运值={luck:F2}）。");
+		    return result;
 		}
 
 		/// <summary>
-		/// 步骤3（模式A - 玩家附近）：在玩家附近随机位置生成真实掉落物（小范围散落）。
+		/// 步骤2（模式A - 玩家附近）：在玩家附近随机位置生成真实掉落物（小范围散落）。
 		/// </summary>
 		private IEnumerator SpawnDropsAroundPlayerCoroutine(List<PendingFishData> pending, CharacterMainControl player)
 		{
@@ -133,7 +146,7 @@ namespace GrenadeFishing.Utils
 
 			Transform center = ResolveMainPlayerCenter(player);
 			Vector3 playerPos = center.position;
-			Log.DebugMsg($"开始生成真实掉落：总计={pending.Count}，中心(玩家)={playerPos}（来源={center.name}）");
+			L.DebugMsg($"开始生成真实掉落：总计={pending.Count}，中心(玩家)={playerPos}（来源={center.name}）");
 
 			for (int i = 0; i < pending.Count; i++)
 			{
@@ -144,12 +157,12 @@ namespace GrenadeFishing.Utils
 				Item? itemInstance = null;
 				try
 				{
-					Log.DebugMsg($"尝试实例化物品：Name={data.displayName}, TypeID={data.typeId}, Value={data.value}");
+					L.DebugMsg($"尝试实例化物品：Name={data.displayName}, TypeID={data.typeId}, Value={data.value}");
 					itemInstance = ItemAssetsCollection.InstantiateSync(data.typeId);
 				}
 				catch (Exception ex)
 				{
-					Log.Warn($"实例化物品失败（TypeID={data.typeId}, Name={data.displayName}）：{ex.Message}");
+					L.Warn($"实例化物品失败（TypeID={data.typeId}, Name={data.displayName}）：{ex.Message}");
 				}
 
 				if (itemInstance != null)
@@ -159,13 +172,13 @@ namespace GrenadeFishing.Utils
 					if (outward.sqrMagnitude < 0.01f) outward = Vector3.up;
 					var dropDir = outward.normalized;
 
-					Log.DebugMsg($"准备掉落：Name={data.displayName}, TypeID={data.typeId}, SpawnPos={spawnPos}, DropDir={dropDir}, Dist={outward.magnitude:F2}");
+					L.DebugMsg($"准备掉落：Name={data.displayName}, TypeID={data.typeId}, SpawnPos={spawnPos}, DropDir={dropDir}, Dist={outward.magnitude:F2}");
 					itemInstance.Drop(spawnPos, true, dropDir, 35f);
-					Log.Info($"已生成掉落：{data.displayName}({data.typeId}) @ {spawnPos}");
+					L.Info($"已生成掉落：{data.displayName}({data.typeId}) @ {spawnPos}");
 				}
 				else
 				{
-					Log.Warn($"放弃掉落：实例化失败 Name={data.displayName}, TypeID={data.typeId}");
+					L.Warn($"放弃掉落：实例化失败 Name={data.displayName}, TypeID={data.typeId}");
 				}
 
 				// 为避免同帧生成全部掉落造成卡顿，适当让渡一帧
@@ -174,7 +187,7 @@ namespace GrenadeFishing.Utils
 		}
 
 		/// <summary>
-		/// 步骤3（模式B - 爆炸飞溅）：在爆炸点向四周（水平面以上）抛射生成真实掉落物。
+		/// 步骤2（模式B - 爆炸飞溅）：在爆炸点向四周（水平面以上）抛射生成真实掉落物。
 		/// </summary>
 		private IEnumerator SpawnDropsExplosionSplashCoroutine(List<PendingFishData> pending, Vector3 explosionPos, CharacterMainControl player)
 		{
@@ -185,7 +198,7 @@ namespace GrenadeFishing.Utils
 
 			// 起飞点：使用“玩家Y + 偏移”的高度，XZ 取爆炸点；若无玩家则回退为水面+1m 或 爆炸点+1m
 			Vector3 spawnBase = GetSplashStartFromPlayerHeight(explosionPos, player, splashStartHeightOffsetFromPlayerY);
-			Log.DebugMsg($"开始爆炸飞溅掉落：总计={pending.Count}，爆炸点={explosionPos}, 起飞基准={spawnBase}, 偏移={splashStartHeightOffsetFromPlayerY:F2}, Homing={splashHomingWeight:F2}, DistForce/m={splashDistanceForcePerMeter:F2}");
+			L.DebugMsg($"开始爆炸飞溅掉落：总计={pending.Count}，爆炸点={explosionPos}, 起飞基准={spawnBase}, 偏移={splashStartHeightOffsetFromPlayerY:F2}, Homing={splashHomingWeight:F2}, DistForce/m={splashDistanceForcePerMeter:F2}");
 
 			for (int i = 0; i < pending.Count; i++)
 			{
@@ -195,12 +208,12 @@ namespace GrenadeFishing.Utils
 				Item? itemInstance = null;
 				try
 				{
-					Log.DebugMsg($"[飞溅] 尝试实例化物品：Name={data.displayName}, TypeID={data.typeId}, Value={data.value}");
+					L.DebugMsg($"[飞溅] 尝试实例化物品：Name={data.displayName}, TypeID={data.typeId}, Value={data.value}");
 					itemInstance = ItemAssetsCollection.InstantiateSync(data.typeId);
 				}
 				catch (Exception ex)
 				{
-					Log.Warn($"[飞溅] 实例化物品失败（TypeID={data.typeId}, Name={data.displayName}）：{ex.Message}");
+					L.Warn($"[飞溅] 实例化物品失败（TypeID={data.typeId}, Name={data.displayName}）：{ex.Message}");
 				}
 
 				if (itemInstance != null)
@@ -240,11 +253,11 @@ namespace GrenadeFishing.Utils
 					Vector3 dropDir = finalDir * force;
 
 					itemInstance.Drop(spawnBase, true, dropDir, explosionRandomAngle);
-					Log.Info($"[飞溅] 已生成掉落：{data.displayName}({data.typeId}) @ {spawnBase}, BaseF={baseForce:F2}, ExtraF={extra:F2}, Force={force:F2}, Up={up:F2}, w={w:F2}");
+					L.Info($"[飞溅] 已生成掉落：{data.displayName}({data.typeId}) @ {spawnBase}, BaseF={baseForce:F2}, ExtraF={extra:F2}, Force={force:F2}, Up={up:F2}, w={w:F2}");
 				}
 				else
 				{
-					Log.Warn($"[飞溅] 放弃掉落：实例化失败 Name={data.displayName}, TypeID={data.typeId}");
+					L.Warn($"[飞溅] 放弃掉落：实例化失败 Name={data.displayName}, TypeID={data.typeId}");
 				}
 
 				yield return null;
@@ -344,7 +357,7 @@ namespace GrenadeFishing.Utils
 		{
 			// 按需求改为 0~1 随机数（目前游戏接口返回恒为1）
 			float luck = UnityEngine.Random.value;
-			Log.DebugMsg($"使用随机幸运值：{luck:F2}");
+			L.DebugMsg($"使用随机幸运值：{luck:F2}");
 			return luck;
 		}
 

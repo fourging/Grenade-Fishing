@@ -14,6 +14,15 @@ namespace GrenadeFishing.Utils
 	[DefaultExecutionOrder(-100)]
 	public class WaterRegionHelper : MonoBehaviour
 	{
+		// 日志模块
+		private static readonly GrenadeFishing.Utils.Logger L = GrenadeFishing.Utils.Log.GetLogger();
+		// 在类初始化时，由你定义的局部布尔变量控制该文件日志：
+		private static bool LocalLogs = true; // 你可以在别处修改这个变量
+		static WaterRegionHelper()
+		{
+			L.SetEnabled(LocalLogs); // 一次设置即可
+		}
+		
 		public static WaterRegionHelper Instance { get; private set; }
 
 		[Header("Detection Settings")]
@@ -76,7 +85,7 @@ namespace GrenadeFishing.Utils
 			waterLayer = LayerMask.NameToLayer("Water");
 			if (waterLayer < 0)
 			{
-				Debug.LogWarning("[WaterRegionHelper] Layer named 'Water' not found in project layers.");
+				L.Warn("[WaterRegionHelper] Layer named 'Water' not found in project layers.");
 				waterMask = 0;
 			}
 			else
@@ -98,7 +107,7 @@ namespace GrenadeFishing.Utils
 
 			if (diagnosticLogging)
 			{
-				Debug.Log($"[WaterRegionHelper] 初始化图层掩码: mask={waterMask}, base='Water'({waterLayer}), extra=[{string.Join(",", extraWaterLayerNames ?? Array.Empty<string>())}]");
+				L.Info($"[WaterRegionHelper] 初始化图层掩码: mask={waterMask}, base='Water'({waterLayer}), extra=[{string.Join(",", extraWaterLayerNames ?? Array.Empty<string>())}]");
 			}
 
 			// 预计算“非水体遮挡”掩码，避免后续每次计算
@@ -127,7 +136,7 @@ namespace GrenadeFishing.Utils
 				}
 			}
 
-			Debug.Log($"[WaterRegionHelper] Rebuild cache found {waterColliders.Count} water colliders.");
+			L.Info($"[WaterRegionHelper] Rebuild cache found {waterColliders.Count} water colliders.");
 		}
 
 		/// <summary>
@@ -147,7 +156,7 @@ namespace GrenadeFishing.Utils
 			{
 				if (diagnosticLogging)
 				{
-					Debug.LogWarning("[WaterRegionHelper] 判定失败：未找到 'Water' 图层或图层掩码为 0。");
+					L.Warn("[WaterRegionHelper] 判定失败：未找到 'Water' 图层或图层掩码为 0。");
 				}
 				return false;
 			}
@@ -169,7 +178,7 @@ namespace GrenadeFishing.Utils
 					// 非任何水体包围盒内，快速返回 false
 					if (diagnosticLogging)
 					{
-						Debug.Log($"[WaterRegionHelper] 爆炸点 {worldPos} 不在任何缓存水体 Bounds 内 -> 非水体。");
+						L.DebugMsg($"[WaterRegionHelper] 爆炸点 {worldPos} 不在任何缓存水体 Bounds 内 -> 非水体。");
 					}
 					return false;
 				}
@@ -180,7 +189,7 @@ namespace GrenadeFishing.Utils
 			bool aboveDryLandHard = hasSurface && (worldPos.y > surfaceY + dryLandHardAllowance);
 			if (diagnosticLogging && hasSurface)
 			{
-				Debug.Log($"[WaterRegionHelper] SurfaceY={surfaceY:F2}, delta={(worldPos.y - surfaceY):F2}, hardAllowance={dryLandHardAllowance:F2}, aboveDryLandHard={aboveDryLandHard}");
+				L.DebugMsg($"[WaterRegionHelper] SurfaceY={surfaceY:F2}, delta={(worldPos.y - surfaceY):F2}, hardAllowance={dryLandHardAllowance:F2}, aboveDryLandHard={aboveDryLandHard}");
 			}
 
 			// 2) 基于垂直柱的水面判定（优先、强约束）：
@@ -191,7 +200,7 @@ namespace GrenadeFishing.Utils
 			{
 				if (diagnosticLogging)
 				{
-					Debug.Log($"[WaterRegionHelper] VerticalColumn 命中水面: name='{waterHitInfo.collider?.name}' y={waterHitInfo.point.y:F2}");
+					L.DebugMsg($"[WaterRegionHelper] VerticalColumn 命中水面: name='{waterHitInfo.collider?.name}' y={waterHitInfo.point.y:F2}");
 				}
 				lastExplosionWasWater = true;
 				return true;
@@ -201,7 +210,7 @@ namespace GrenadeFishing.Utils
 			{
 				if (diagnosticLogging)
 				{
-					Debug.Log("[WaterRegionHelper] 高于水面硬阈值且未命中垂直水面 -> 提前返回非水体。");
+					L.DebugMsg("[WaterRegionHelper] 高于水面硬阈值且未命中垂直水面 -> 提前返回非水体。");
 				}
 				return false;
 			}
@@ -218,7 +227,7 @@ namespace GrenadeFishing.Utils
 					bool isWater = IsWaterCollider(firstHit.collider);
 					if (diagnosticLogging)
 					{
-						Debug.Log($"[WaterRegionHelper] FirstHit↓ hit={firstHit.collider != null} layer={firstHit.collider?.gameObject.layer} name='{firstHit.collider?.name}' dist={firstHit.distance:F2} -> {(isWater ? "WATER" : "NON-WATER")}");
+						L.DebugMsg($"[WaterRegionHelper] FirstHit↓ hit={firstHit.collider != null} layer={firstHit.collider?.gameObject.layer} name='{firstHit.collider?.name}' dist={firstHit.distance:F2} -> {(isWater ? "WATER" : "NON-WATER")}");
 					}
 					if (isWater)
 					{
@@ -226,7 +235,7 @@ namespace GrenadeFishing.Utils
 						{
 							if (diagnosticLogging)
 							{
-								Debug.Log("[WaterRegionHelper] FirstHit↓ 命中水体但高于水面硬阈值，拒绝。");
+								L.DebugMsg("[WaterRegionHelper] FirstHit↓ 命中水体但高于水面硬阈值，拒绝。");
 							}
 						}
 						else
@@ -242,7 +251,7 @@ namespace GrenadeFishing.Utils
 					bool isWater = IsWaterCollider(firstHit.collider);
 					if (diagnosticLogging)
 					{
-						Debug.Log($"[WaterRegionHelper] FirstHit↑ hit={firstHit.collider != null} layer={firstHit.collider?.gameObject.layer} name='{firstHit.collider?.name}' dist={firstHit.distance:F2} -> {(isWater ? "WATER" : "NON-WATER")}");
+						L.DebugMsg($"[WaterRegionHelper] FirstHit↑ hit={firstHit.collider != null} layer={firstHit.collider?.gameObject.layer} name='{firstHit.collider?.name}' dist={firstHit.distance:F2} -> {(isWater ? "WATER" : "NON-WATER")}");
 					}
 					if (isWater)
 					{
@@ -250,7 +259,7 @@ namespace GrenadeFishing.Utils
 						{
 							if (diagnosticLogging)
 							{
-								Debug.Log("[WaterRegionHelper] FirstHit↑ 命中水体但高于水面硬阈值，拒绝。");
+								L.DebugMsg("[WaterRegionHelper] FirstHit↑ 命中水体但高于水面硬阈值，拒绝。");
 							}
 						}
 						else
@@ -275,7 +284,7 @@ namespace GrenadeFishing.Utils
 
 				if (diagnosticLogging)
 				{
-					Debug.Log($"[WaterRegionHelper] 胶囊近邻检测 hit={capsuleHit} r={r:F2} halfH={verticalHalfExtent:F2} mask={waterMask} @ {worldPos}");
+					L.DebugMsg($"[WaterRegionHelper] 胶囊近邻检测 hit={capsuleHit} r={r:F2} halfH={verticalHalfExtent:F2} mask={waterMask} @ {worldPos}");
 					if (capsuleHit)
 					{
 						for (int i = 0; i < hitCount; i++)
@@ -301,10 +310,10 @@ namespace GrenadeFishing.Utils
 								dist = Vector3.Distance(worldPos, cp);
 								if (diagnosticLogging)
 								{
-									Debug.Log($"[WaterRegionHelper]  - ClosestPoint 不可用，使用 Bounds 近似。");
+									L.DebugMsg($"[WaterRegionHelper]  - ClosestPoint 不可用，使用 Bounds 近似。");
 								}
 							}
-							Debug.Log($"[WaterRegionHelper]  - 命中Collider: '{c.name}' layer={c.gameObject.layer} dist={dist:F2} closest={cp} boundsCenter={c.bounds.center}");
+							L.DebugMsg($"[WaterRegionHelper]  - 命中Collider: '{c.name}' layer={c.gameObject.layer} dist={dist:F2} closest={cp} boundsCenter={c.bounds.center}");
 
 							// 视线遮挡过滤：若从爆炸点到水体最近点之间先被非水体遮挡，则忽略该命中（避免公路近水误判）
 							if (!IsOccludedByNonWater(worldPos, cp))
@@ -314,7 +323,7 @@ namespace GrenadeFishing.Utils
 								{
 									if (diagnosticLogging)
 									{
-										Debug.Log("[WaterRegionHelper] 胶囊命中水体但高于水面硬阈值，忽略。");
+										L.DebugMsg("[WaterRegionHelper] 胶囊命中水体但高于水面硬阈值，忽略。");
 									}
 								}
 								else
@@ -325,7 +334,7 @@ namespace GrenadeFishing.Utils
 							}
 							else if (diagnosticLogging)
 							{
-								Debug.Log($"[WaterRegionHelper]  - 命中但被非水体遮挡，忽略。");
+								L.DebugMsg($"[WaterRegionHelper]  - 命中但被非水体遮挡，忽略。");
 							}
 						}
 					}
@@ -346,10 +355,10 @@ namespace GrenadeFishing.Utils
 				bool downHit = Physics.SphereCast(castOriginDown, sphereCastRadius, Vector3.down, out castHit, castMaxDistance, waterMask, QueryTriggerInteraction.Collide);
 				if (diagnosticLogging)
 				{
-					Debug.Log($"[WaterRegionHelper] SphereCast↓ hit={downHit} dist={(downHit ? castHit.distance.ToString("F2") : "-")} r={sphereCastRadius:F2} depth={castMaxDistance:F2}");
+					L.DebugMsg($"[WaterRegionHelper] SphereCast↓ hit={downHit} dist={(downHit ? castHit.distance.ToString("F2") : "-")} r={sphereCastRadius:F2} depth={castMaxDistance:F2}");
 					if (downHit)
 					{
-						Debug.Log($"[WaterRegionHelper]  - 命中对象: '{castHit.collider?.name}' layer={castHit.collider?.gameObject.layer} point={castHit.point} normal={castHit.normal}");
+						L.DebugMsg($"[WaterRegionHelper]  - 命中对象: '{castHit.collider?.name}' layer={castHit.collider?.gameObject.layer} point={castHit.point} normal={castHit.normal}");
 					}
 				}
 				if (downHit && !IsOccludedByNonWater(worldPos, castHit.point))
@@ -358,7 +367,7 @@ namespace GrenadeFishing.Utils
 					{
 						if (diagnosticLogging)
 						{
-							Debug.Log("[WaterRegionHelper] SphereCast↓ 命中水体但高于水面硬阈值，忽略。");
+							L.DebugMsg("[WaterRegionHelper] SphereCast↓ 命中水体但高于水面硬阈值，忽略。");
 						}
 					}
 					else
@@ -371,10 +380,10 @@ namespace GrenadeFishing.Utils
 				bool upHit = Physics.SphereCast(castOriginUp, sphereCastRadius, Vector3.up, out castHit, castMaxDistance, waterMask, QueryTriggerInteraction.Collide);
 				if (diagnosticLogging)
 				{
-					Debug.Log($"[WaterRegionHelper] SphereCast↑ hit={upHit} dist={(upHit ? castHit.distance.ToString("F2") : "-")} r={sphereCastRadius:F2} depth={castMaxDistance:F2}");
+					L.DebugMsg($"[WaterRegionHelper] SphereCast↑ hit={upHit} dist={(upHit ? castHit.distance.ToString("F2") : "-")} r={sphereCastRadius:F2} depth={castMaxDistance:F2}");
 					if (upHit)
 					{
-						Debug.Log($"[WaterRegionHelper]  - 命中对象: '{castHit.collider?.name}' layer={castHit.collider?.gameObject.layer} point={castHit.point} normal={castHit.normal}");
+						L.DebugMsg($"[WaterRegionHelper]  - 命中对象: '{castHit.collider?.name}' layer={castHit.collider?.gameObject.layer} point={castHit.point} normal={castHit.normal}");
 					}
 				}
 				if (upHit && !IsOccludedByNonWater(worldPos, castHit.point))
@@ -383,7 +392,7 @@ namespace GrenadeFishing.Utils
 					{
 						if (diagnosticLogging)
 						{
-							Debug.Log("[WaterRegionHelper] SphereCast↑ 命中水体但高于水面硬阈值，忽略。");
+							L.DebugMsg("[WaterRegionHelper] SphereCast↑ 命中水体但高于水面硬阈值，忽略。");
 						}
 					}
 					else
@@ -398,10 +407,10 @@ namespace GrenadeFishing.Utils
 				bool downHit = Physics.Raycast(castOriginDown, Vector3.down, out castHit, castMaxDistance, waterMask, QueryTriggerInteraction.Collide);
 				if (diagnosticLogging)
 				{
-					Debug.Log($"[WaterRegionHelper] Raycast↓ hit={downHit} dist={(downHit ? castHit.distance.ToString("F2") : "-")} depth={castMaxDistance:F2}");
+					L.DebugMsg($"[WaterRegionHelper] Raycast↓ hit={downHit} dist={(downHit ? castHit.distance.ToString("F2") : "-")} depth={castMaxDistance:F2}");
 					if (downHit)
 					{
-						Debug.Log($"[WaterRegionHelper]  - 命中对象: '{castHit.collider?.name}' layer={castHit.collider?.gameObject.layer} point={castHit.point} normal={castHit.normal}");
+						L.DebugMsg($"[WaterRegionHelper]  - 命中对象: '{castHit.collider?.name}' layer={castHit.collider?.gameObject.layer} point={castHit.point} normal={castHit.normal}");
 					}
 				}
 				if (downHit && !IsOccludedByNonWater(worldPos, castHit.point))
@@ -410,7 +419,7 @@ namespace GrenadeFishing.Utils
 					{
 						if (diagnosticLogging)
 						{
-							Debug.Log("[WaterRegionHelper] Raycast↓ 命中水体但高于水面硬阈值，忽略。");
+							L.DebugMsg("[WaterRegionHelper] Raycast↓ 命中水体但高于水面硬阈值，忽略。");
 						}
 					}
 					else
@@ -424,10 +433,10 @@ namespace GrenadeFishing.Utils
 				bool upHit = Physics.Raycast(castOriginUp, Vector3.up, out castHit, castMaxDistance, waterMask, QueryTriggerInteraction.Collide);
 				if (diagnosticLogging)
 				{
-					Debug.Log($"[WaterRegionHelper] Raycast↑ hit={upHit} dist={(upHit ? castHit.distance.ToString("F2") : "-")} depth={castMaxDistance:F2}");
+					L.DebugMsg($"[WaterRegionHelper] Raycast↑ hit={upHit} dist={(upHit ? castHit.distance.ToString("F2") : "-")} depth={castMaxDistance:F2}");
 					if (upHit)
 					{
-						Debug.Log($"[WaterRegionHelper]  - 命中对象: '{castHit.collider?.name}' layer={castHit.collider?.gameObject.layer} point={castHit.point} normal={castHit.normal}");
+						L.DebugMsg($"[WaterRegionHelper]  - 命中对象: '{castHit.collider?.name}' layer={castHit.collider?.gameObject.layer} point={castHit.point} normal={castHit.normal}");
 					}
 				}
 				if (upHit && !IsOccludedByNonWater(worldPos, castHit.point))
@@ -436,7 +445,7 @@ namespace GrenadeFishing.Utils
 					{
 						if (diagnosticLogging)
 						{
-							Debug.Log("[WaterRegionHelper] Raycast↑ 命中水体但高于水面硬阈值，忽略。");
+							L.DebugMsg("[WaterRegionHelper] Raycast↑ 命中水体但高于水面硬阈值，忽略。");
 						}
 					}
 					else
@@ -453,7 +462,7 @@ namespace GrenadeFishing.Utils
 				const float probeRadius = 4f;
 				var probeBuffer = _overlapBuffer ?? (_overlapBuffer = new Collider[32]);
 				int probeCount = Physics.OverlapSphereNonAlloc(worldPos, probeRadius, probeBuffer, waterMask, QueryTriggerInteraction.Collide);
-				Debug.Log($"[WaterRegionHelper] 未命中附近水体：pos={worldPos}, mask={waterMask}, boundsCount={waterBounds.Count}, colliders={waterColliders.Count}, probe(r={probeRadius})={probeCount}");
+				L.DebugMsg($"[WaterRegionHelper] 未命中附近水体：pos={worldPos}, mask={waterMask}, boundsCount={waterBounds.Count}, colliders={waterColliders.Count}, probe(r={probeRadius})={probeCount}");
 				for (int i = 0; i < probeCount; i++)
 				{
 					var c = probeBuffer[i];
@@ -476,10 +485,10 @@ namespace GrenadeFishing.Utils
 						dist = Vector3.Distance(worldPos, cp);
 						if (diagnosticLogging)
 						{
-							Debug.Log($"[WaterRegionHelper]  - ClosestPoint 不可用，使用 Bounds 近似。");
+							L.DebugMsg($"[WaterRegionHelper]  - ClosestPoint 不可用，使用 Bounds 近似。");
 						}
 					}
-					Debug.Log($"[WaterRegionHelper]  - 探测到临近Collider: '{c.name}' layer={c.gameObject.layer} dist={dist:F2} closest={cp} boundsCenter={c.bounds.center}");
+					L.DebugMsg($"[WaterRegionHelper]  - 探测到临近Collider: '{c.name}' layer={c.gameObject.layer} dist={dist:F2} closest={cp} boundsCenter={c.bounds.center}");
 				}
 			}
 			return false;
@@ -561,7 +570,7 @@ namespace GrenadeFishing.Utils
 			{
 				if (diagnosticLogging)
 				{
-					Debug.Log("[WaterRegionHelper] VerticalColumn 未找到水面。");
+					L.DebugMsg("[WaterRegionHelper] VerticalColumn 未找到水面。");
 				}
 				return false;
 			}
@@ -573,7 +582,7 @@ namespace GrenadeFishing.Utils
 			{
 				if (diagnosticLogging)
 				{
-					Debug.Log($"[WaterRegionHelper] VerticalColumn 水面高度={waterY:F2}，爆炸点高于水面 {worldPos.y - waterY:F2}m -> 非水体。");
+					L.DebugMsg($"[WaterRegionHelper] VerticalColumn 水面高度={waterY:F2}，爆炸点高于水面 {worldPos.y - waterY:F2}m -> 非水体。");
 				}
 				return false;
 			}
@@ -584,7 +593,7 @@ namespace GrenadeFishing.Utils
 			{
 				if (diagnosticLogging)
 				{
-					Debug.Log("[WaterRegionHelper] VerticalColumn 爆炸点与水面之间被非水体遮挡 -> 非水体。");
+					L.DebugMsg("[WaterRegionHelper] VerticalColumn 爆炸点与水面之间被非水体遮挡 -> 非水体。");
 				}
 				return false;
 			}

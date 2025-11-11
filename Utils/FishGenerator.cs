@@ -13,6 +13,15 @@ namespace GrenadeFishing.Utils
     /// </summary>
     public static class FishGenerator
     {
+        // 日志模块
+        private static readonly GrenadeFishing.Utils.Logger L = GrenadeFishing.Utils.Log.GetLogger();
+        // 在类初始化时，由你定义的局部布尔变量控制该文件日志：
+        private static bool LocalLogs = true; // 你可以在别处修改这个变量
+        static FishGenerator()
+        {
+            L.SetEnabled(LocalLogs); // 一次设置即可
+        }
+        
         public class FishDefinition
         {
             public string displayName = string.Empty;
@@ -66,6 +75,10 @@ namespace GrenadeFishing.Utils
         // 对 tier4 （>6000价值）额外加权基数（最终会乘以 costFactor）
         private const float Tier4BaseBoost = 0.012f; // 常规 boost（可微调）
         private const float Tier4CostFactorMultiplier = 0.035f; // 当 costFactor==1 时，额外加成 ~3.5%
+
+        // 保底机制配置键
+        private const string KeyHighTierGrenadeCount = "GF_HighTierGrenadeCount"; // 高价/中高价手雷使用计数
+        private const string KeyLowTierGrenadeCount = "GF_LowTierGrenadeCount"; // 低价爆炸物使用计数
         #endregion
 
         /// <summary>
@@ -133,9 +146,23 @@ namespace GrenadeFishing.Utils
         #region 新增：按手雷价格调用的重载（推荐）
         /// <summary>
         /// 新增：直接传入手雷价格（cost）。内部会决定档位并用 costFactor 做额外微调。
+        /// 包含保底机制：高价手雷和低价爆炸物的保底触发。
         /// </summary>
         public static List<FishDefinition> GenerateByLuck(float luck01, int grenadeCost, int totalValueCap = 0, float miracleChance = DefaultMiracleChance, bool miracleIgnoresCap = false)
         {
+            // 添加调试日志
+            L.DebugMsg($"[炸鱼保底调试] GenerateByLuck被调用，手雷价格={grenadeCost}");
+            
+            // 检查保底机制（在随机生成之前）
+            var guaranteedFish = CheckGuaranteedFish(grenadeCost);
+            if (guaranteedFish != null)
+            {
+                // 触发保底：返回保底鱼，跳过随机生成
+                L.Info($"[炸鱼保底] 触发保底机制！手雷价格={grenadeCost}，保底鱼={guaranteedFish.displayName}(价值={guaranteedFish.value})");
+                return new List<FishDefinition> { guaranteedFish };
+            }
+
+            L.DebugMsg($"[炸鱼保底调试] 未触发保底，继续正常生成流程");
             GrenadeTier tier = ChooseTierByCost(grenadeCost);
             float costFactor = ComputeCostFactorFromPrice(grenadeCost); // 0..1
             return GenerateByLuck_Internal(luck01, tier, costFactor, totalValueCap, miracleChance, miracleIgnoresCap);
@@ -185,7 +212,7 @@ namespace GrenadeFishing.Utils
             // ------------- 奇迹机制 -------------
             if (miracleChance > 0f && UnityEngine.Random.value < miracleChance)
             {
-                // 奇迹触发：尝试直接生成一条顶级鱼（tier4）
+                // 奇迹触发：尝试直接生成一条顶级鱼（tier4 / index 3，对应 value > 6000）
                 FishDefinition miracleFish = ChooseFishFromTier(3);
                 if (miracleFish != null)
                 {
@@ -274,7 +301,7 @@ namespace GrenadeFishing.Utils
         /// <summary>
         /// 计算按档位与价格修正后的分档概率
         /// - costFactor: 0..1（来自价格）
-        /// - 对 tier4 额外给与小幅加权，随 costFactor 增强
+        /// - 对 tier4 (index 3) 额外给与小幅加权，随 costFactor 增强
         /// </summary>
         private static float[] ComputeAdjustedTierProbs(GrenadeTier tier, float costFactor)
         {
@@ -358,7 +385,7 @@ namespace GrenadeFishing.Utils
                 case 1: return tier2;
                 case 2: return tier3;
                 case 3: return tier4;
-                default: return tier1;
+                default: return null;
             }
         }
 
@@ -380,17 +407,218 @@ namespace GrenadeFishing.Utils
         }
         #endregion
 
+        #region 保底机制
+
+        // 内存缓存，避免存储模块临时异常导致值被重置
+        private static readonly Dictionary<string, int> counterCache = new Dictionary<string, int>();
+
+        /// <summary>
+        /// 检查是否触发保底机制，如果触发则返回保底鱼，否则返回 null
+        /// 说明：
+        ///  - ChooseFishFromTier(3) 中的 3 是索引 3（0..3 共 4 档），即第 4 档（value > 6000）
+        ///  - 使用 ChooseTierByCost 判断是“高价/低价”分支，避免直接用魔数 50
+        /// </summary>
+        private static FishDefinition CheckGuaranteedFish(int grenadeCost)
+        {
+            GrenadeTier tier = ChooseTierByCost(grenadeCost);
+            bool isHighTierGrenade = tier >= GrenadeTier.B; // B/A/S 视为较高投入
+
+            if (isHighTierGrenade)
+            {
+                L.DebugMsg($"[炸鱼保底调试] 手雷被归为中高价档（{tier}），检查高价手雷保底");
+                int count = GetOrInitCounter(KeyHighTierGrenadeCount);
+                L.DebugMsg($"[炸鱼保底调试] 高价手雷当前使用次数={count}");
+                count++;
+                SaveCounter(KeyHighTierGrenadeCount, count);
+                L.DebugMsg($"[炸鱼保底调试] 保存后高价手雷使用次数={count}");
+
+                // 100 的倍数：掉落一条 index 3（第4档，>6000）的鱼（优先）
+                if (count % 100 == 0)
+                {
+                    L.DebugMsg($"[炸鱼保底调试] 检查100的倍数保底，count={count}");
+                    var fish = ChooseFishFromTier(3); // index 3 = tier4 (>6000)
+                    if (fish != null)
+                    {
+                        L.Info($"[炸鱼保底] 高价手雷保底触发！使用次数={count}（100的倍数），保底鱼={fish.displayName}(价值={fish.value})");
+                        return fish;
+                    }
+                }
+
+                // 50 的倍数（但非 100 的倍数）：掉落一条价格在 3000 到 6000 之间的鱼
+                if (count % 50 == 0 && count % 100 != 0)
+                {
+                    L.DebugMsg($"[炸鱼保底调试] 检查50的倍数保底，count={count}");
+                    var fish = ChooseFishFromValueRange(3000, 6000);
+                    if (fish != null)
+                    {
+                        L.Info($"[炸鱼保底] 高价手雷保底触发！使用次数={count}（50的倍数），保底鱼={fish.displayName}(价值={fish.value})");
+                        return fish;
+                    }
+                }
+            }
+            else
+            {
+                L.DebugMsg($"[炸鱼保底调试] 手雷被归为低价档（{tier}），检查低价爆炸物保底");
+                int count = GetOrInitCounter(KeyLowTierGrenadeCount);
+                L.DebugMsg($"[炸鱼保底调试] 低价爆炸物当前使用次数={count}");
+                count++;
+                SaveCounter(KeyLowTierGrenadeCount, count);
+                L.DebugMsg($"[炸鱼保底调试] 保存后低价爆炸物使用次数={count}");
+
+                // >114 次：直接给一条全表中最贵的鱼（保底剧烈放大）
+                if (count > 114)
+                {
+                    L.DebugMsg($"[炸鱼保底调试] 检查114次保底，次数count={count}");
+                    var fish = allFish.OrderByDescending(f => f.value).FirstOrDefault();
+                    if (fish != null)
+                    {
+                        L.Info($"[炸鱼保底] 低价爆炸物保底触发！使用次数={count}（>114次），保底鱼={fish.displayName}(价值={fish.value})");
+                        return fish;
+                    }
+                }
+
+                // 51 的倍数：给一条 index 3（第4档，>6000）的鱼
+                if (count % 51 == 0)
+                {
+                    L.DebugMsg($"[炸鱼保底调试] 检查51的倍数保底，count={count}");
+                    var fish = ChooseFishFromTier(3); // index 3 = tier4 (>6000)
+                    if (fish != null)
+                    {
+                        L.Info($"[炸鱼保底] 低价爆炸物保底触发！使用次数={count}（51的倍数），保底鱼={fish.displayName}(价值={fish.value})");
+                        return fish;
+                    }
+                }
+
+                // 20 的倍数：给一条 1000 块以下的鱼
+                if (count % 20 == 0)
+                {
+                    L.DebugMsg($"[炸鱼保底调试] 检查20的倍数保底，count={count}");
+                    var fish = ChooseFishFromValueRange(0, 1000);
+                    if (fish != null)
+                    {
+                        L.Info($"[炸鱼保底] 低价爆炸物保底触发！使用次数={count}（20的倍数），保底鱼={fish.displayName}(价值={fish.value})");
+                        return fish;
+                    }
+                }
+            }
+
+            L.DebugMsg($"[炸鱼保底调试] 未触发任何保底，返回null");
+            return null;
+        }
+
+        /// <summary>
+        /// 从指定价值范围内选择一条鱼
+        /// </summary>
+        private static FishDefinition ChooseFishFromValueRange(int minValue, int maxValue)
+        {
+            var candidates = allFish.Where(f => f.value >= minValue && f.value <= maxValue).ToList();
+            if (candidates.Count == 0) return null;
+
+            // 使用价值加权采样（价值越高权重越大）
+            double totalW = 0.0;
+            var weights = new double[candidates.Count];
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                double baseW = Math.Pow(Math.Max(1, candidates[i].value), 0.45);
+                weights[i] = baseW;
+                totalW += weights[i];
+            }
+
+            double pick = UnityEngine.Random.value * totalW;
+            double c = 0.0;
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                c += weights[i];
+                if (pick <= c) return candidates[i];
+            }
+            return candidates.Last();
+        }
+
+        /// <summary>
+        /// 获取或初始化计数器
+        /// 安全策略：
+        ///  - 优先使用 GuaranteedFishStorage 获取值，成功后更新内存缓存并返回
+        ///  - 若存储读取失败（抛异常），则尝试返回内存缓存中的值（若存在）
+        ///  - 仅在两者都不可用时返回 0，但不会尝试把 0 写回远端存储以避免覆盖已有数据
+        /// </summary>
+        private static int GetOrInitCounter(string key)
+        {
+            L.DebugMsg($"[炸鱼保底调试] GetOrInitCounter被调用，key={key}");
+            
+            try
+            {
+                int value = GuaranteedFishStorage.GetCounter(key, 0);
+                // 更新内存缓存
+                lock (counterCache)
+                {
+                    counterCache[key] = value;
+                }
+                L.DebugMsg($"[炸鱼保底调试] 使用JSON存储读取计数器成功，key={key}, value={value}");
+                return value;
+            }
+            catch (Exception ex)
+            {
+                L.Warn($"[炸鱼保底] JSON存储读取失败（key={key}）：{ex.Message}", ex);
+                lock (counterCache)
+                {
+                    if (counterCache.TryGetValue(key, out int cached))
+                    {
+                        L.DebugMsg($"[炸鱼保底调试] 使用内存缓存计数器值，key={key}, value={cached}");
+                        return cached;
+                    }
+                }
+                L.Warn($"[炸鱼保底] 读取失败且无缓存，返回默认0（不会写回远端以免覆盖）。key={key}");
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// 保存计数器
+        /// 安全策略：
+        ///  - 优先尝试写入 GuaranteedFishStorage
+        ///  - 若写入失败，仍在内存缓存中更新值以免当前会话丢失计数
+        /// </summary>
+        private static void SaveCounter(string key, int value)
+        {
+            L.DebugMsg($"[炸鱼保底调试] SaveCounter被调用，key={key}, value={value}");
+            // 先更新内存缓存（保证会话内不丢失）
+            lock (counterCache)
+            {
+                counterCache[key] = value;
+            }
+
+            try
+            {
+                GuaranteedFishStorage.SetCounter(key, value);
+                L.DebugMsg($"[炸鱼保底调试] 使用JSON存储保存计数器成功，key={key}, value={value}");
+            }
+            catch (Exception ex)
+            {
+                L.Warn($"[炸鱼保底] JSON存储保存失败（key={key}, value={value}）：{ex.Message}", ex);
+                L.Warn($"[炸鱼保底] 已在内存缓存中更新计数，待下次存储可再同步。key={key}, cachedValue={value}");
+            }
+        }
+        #endregion
+
         #region 辅助：cost -> tier 与 costFactor 映射
         /// <summary>
-        /// 保留原始的 cost->tier 映射（兼容）
+        /// 基于 PriceMin/PriceMax 的动态分档（避免硬编码魔数并保证 S 档在实际价格表中可达）
+        /// 规则（可调整）：
+        /// - cost <= PriceMin : D
+        /// - cost 在 PriceMin..PriceMax 中，根据区间百分位落到 C/B/A/S（按 25%/25%/40%/10% 划分）
+        /// 目的是让 PriceMax 对应到 S（如果价格达到或超过 PriceMax）
         /// </summary>
         public static GrenadeTier ChooseTierByCost(int cost)
         {
-            if (cost <= 99) return GrenadeTier.D;
-            if (cost <= 299) return GrenadeTier.C;
-            if (cost <= 599) return GrenadeTier.B;
-            if (cost <= 999) return GrenadeTier.A;
-            return GrenadeTier.S;
+            if (cost <= PriceMin) return GrenadeTier.D;
+
+            if (PriceMax <= PriceMin) return GrenadeTier.B; // 退化保护
+
+            float p = Mathf.InverseLerp(PriceMin, PriceMax, cost); // 0..1
+            if (p <= 0.25f) return GrenadeTier.C;
+            if (p <= 0.50f) return GrenadeTier.B;
+            if (p <= 0.90f) return GrenadeTier.A; // 40% 段
+            return GrenadeTier.S; // top 10%（或 cost > PriceMax）
         }
 
         /// <summary>

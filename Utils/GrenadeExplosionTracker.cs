@@ -16,6 +16,15 @@ namespace GrenadeFishing.Utils
 	/// </summary>
 	public class GrenadeExplosionTracker : MonoBehaviour
 	{
+		// 日志模块
+		private static readonly GrenadeFishing.Utils.Logger L = GrenadeFishing.Utils.Log.GetLogger();
+		// 在类初始化时，由你定义的局部布尔变量控制该文件日志：
+		private static bool LocalLogs = true; // 你可以在别处修改这个变量
+		static GrenadeExplosionTracker()
+		{
+			L.SetEnabled(LocalLogs); // 一次设置即可
+		}
+		
 		/// <summary>
 		/// 当有爆炸且发生在水体时触发（参数: 世界坐标）
 		/// </summary>
@@ -131,11 +140,11 @@ namespace GrenadeFishing.Utils
 			}
 			catch (Exception ex)
 			{
-				Debug.LogWarning($"[GrenadeExplosionTracker] Direct subscribe failed: {ex.Message}");
+				L.Warn($"[GrenadeExplosionTracker] Direct subscribe failed: {ex.Message}", ex);
 			}
 			if (diagnosticLogging)
 			{
-				Debug.Log($"[GrenadeExplosionTracker] Direct subscribed grenades: +{added}, totalSubs={_subscriptions.Count}");
+				L.Info($"[GrenadeExplosionTracker] Direct subscribed grenades: +{added}, totalSubs={_subscriptions.Count}");
 			}
 			return added;
 		}
@@ -262,7 +271,7 @@ namespace GrenadeFishing.Utils
 				{
 					var c = _nearbyDebugBuffer[i];
 					if (c == null) continue;
-					Debug.Log($"手雷爆炸于碰撞箱：{c.gameObject.name} / layer: {LayerMask.LayerToName(c.gameObject.layer)}");
+					L.DebugMsg($"手雷爆炸于碰撞箱：{c.gameObject.name} / layer: {LayerMask.LayerToName(c.gameObject.layer)}");
 				}
 			}
 			catch
@@ -273,7 +282,7 @@ namespace GrenadeFishing.Utils
 
 		private static void DefaultSpawnFishAt(Vector3 pos)
 		{
-			Debug.Log($"[GrenadeExplosionTracker] Explosion at {pos} is on water -> spawn fish (placeholder).");
+			L.Info($"[GrenadeExplosionTracker] Explosion at {pos} is on water -> spawn fish (placeholder).");
 			// 在此接入钓鱼掉落表或生成鱼实体
 		}
 	}

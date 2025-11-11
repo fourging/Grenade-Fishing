@@ -11,17 +11,26 @@ namespace GrenadeFishing
     /// </summary>
     public class ModBehaviour : Duckov.Modding.ModBehaviour
     {
+        // 日志模块
+        private static readonly GrenadeFishing.Utils.Logger L = GrenadeFishing.Utils.Log.GetLogger();
+        // 在类初始化时，由你定义的局部布尔变量控制该文件日志：
+        private static bool LocalLogs = true; // 你可以在别处修改这个变量
+        static ModBehaviour()
+        {
+            L.SetEnabled(LocalLogs); // 一次设置即可
+        }
+        
         private GrenadeExplosionTracker? _tracker;
         private WaterRegionHelper? _waterHelper;
         private bool _subscribed;
-		private static bool _harmonyPatched;
-		private static Harmony? _harmonyInstance;
-		private FishLootService? _fishLoot;
-		private bool _settingsInitialized;
-		private KeyCode _pickupKey = KeyCode.RightShift;
-		private float _pickupRadius = 15f;
-		private GameObject? _runtimeHost;
-		private bool _isEnabled;
+  private static bool _harmonyPatched;
+  private static Harmony? _harmonyInstance;
+  private FishLootService? _fishLoot;
+  private bool _settingsInitialized;
+  private KeyCode _pickupKey = KeyCode.RightShift;
+  private float _pickupRadius = 15f;
+  private GameObject? _runtimeHost;
+  private bool _isEnabled;
 
 		/// <summary>
 		/// 模组启用时调用 - 初始化所有模组功能
@@ -30,13 +39,13 @@ namespace GrenadeFishing
 		{
 			if (_isEnabled)
 			{
-				Debug.LogWarning("[炸鱼测试] 模组已启用，跳过重复初始化。");
+				L.Warn("[炸鱼测试] 模组已启用，跳过重复初始化。");
 				return;
 			}
 
 			try
 			{
-				Debug.Log("[炸鱼测试] Mod已启用。自动检测手雷爆炸并打印是否为水体炸鱼点。");
+				L.Info("[炸鱼测试] Mod已启用。自动检测手雷爆炸并打印是否为水体炸鱼点。");
 
 				// 初始化 Harmony 补丁（全局爆炸入口 Hook）
 				if (!_harmonyPatched)
@@ -46,11 +55,11 @@ namespace GrenadeFishing
 						_harmonyInstance = new Harmony("com.duckovmods.grenadefishing");
 						_harmonyInstance.PatchAll();
 						_harmonyPatched = true;
-						Debug.Log("[炸鱼测试] Harmony 补丁已应用（ExplosionManager.CreateExplosion -> NotifyExplosion）。");
+						L.Info("[炸鱼测试] Harmony 补丁已应用（ExplosionManager.CreateExplosion -> NotifyExplosion）。");
 					}
 					catch (Exception ex)
 					{
-						Debug.LogWarning($"[炸鱼测试] Harmony 补丁应用失败: {ex.Message}");
+						L.Warn($"[炸鱼测试] Harmony 补丁应用失败: {ex.Message}", ex);
 						_harmonyInstance = null;
 					}
 				}
@@ -70,11 +79,11 @@ namespace GrenadeFishing
 				TryInitSettingsUI();
 
 				_isEnabled = true;
-				Debug.Log("[炸鱼测试] 模组初始化完成。");
+				L.Info("[炸鱼测试] 模组初始化完成。");
 			}
 			catch (Exception ex)
 			{
-				Debug.LogError($"[炸鱼测试] OnEnable 初始化失败: {ex.Message}\n{ex.StackTrace}");
+				L.Error($"[炸鱼测试] OnEnable 初始化失败: {ex.Message}\n{ex.StackTrace}", ex);
 				// 即使初始化失败，也尝试清理已创建的资源
 				OnDisable();
 			}
@@ -92,7 +101,7 @@ namespace GrenadeFishing
 
 			try
 			{
-				Debug.Log("[炸鱼测试] 开始禁用模组，清理资源...");
+				L.Info("[炸鱼测试] 开始禁用模组，清理资源...");
 
 				// 1. 取消事件订阅（优先处理，防止事件触发时访问已销毁的对象）
 				if (_subscribed)
@@ -102,11 +111,11 @@ namespace GrenadeFishing
 						GrenadeExplosionTracker.OnAnyExplosion -= HandleAnyExplosion;
 						GrenadeExplosionTracker.OnWaterExplosion -= HandleWaterExplosion;
 						_subscribed = false;
-						Debug.Log("[炸鱼测试] 已取消事件订阅。");
+						L.Info("[炸鱼测试] 已取消事件订阅。");
 					}
 					catch (Exception ex)
 					{
-						Debug.LogWarning($"[炸鱼测试] 取消事件订阅时出错: {ex.Message}");
+						L.Warn($"[炸鱼测试] 取消事件订阅时出错: {ex.Message}", ex);
 					}
 				}
 
@@ -118,13 +127,13 @@ namespace GrenadeFishing
 						if (ModSettingAPI.IsInit)
 						{
 							ModSettingAPI.RemoveMod();
-							Debug.Log("[炸鱼测试] 已移除 ModSetting UI。");
+							L.Info("[炸鱼测试] 已移除 ModSetting UI。");
 						}
 						_settingsInitialized = false;
 					}
 					catch (Exception ex)
 					{
-						Debug.LogWarning($"[炸鱼测试] 清理 ModSetting UI 时出错: {ex.Message}");
+						L.Warn($"[炸鱼测试] 清理 ModSetting UI 时出错: {ex.Message}", ex);
 					}
 				}
 
@@ -136,11 +145,11 @@ namespace GrenadeFishing
 						_harmonyInstance.UnpatchAll("com.duckovmods.grenadefishing");
 						_harmonyInstance = null;
 						_harmonyPatched = false;
-						Debug.Log("[炸鱼测试] 已移除 Harmony 补丁。");
+						L.Info("[炸鱼测试] 已移除 Harmony 补丁。");
 					}
 					catch (Exception ex)
 					{
-						Debug.LogWarning($"[炸鱼测试] 移除 Harmony 补丁时出错: {ex.Message}");
+						L.Warn($"[炸鱼测试] 移除 Harmony 补丁时出错: {ex.Message}", ex);
 					}
 				}
 
@@ -156,20 +165,20 @@ namespace GrenadeFishing
 					{
 						Destroy(_runtimeHost);
 						_runtimeHost = null;
-						Debug.Log("[炸鱼测试] 已销毁运行时 GameObject。");
+						L.Info("[炸鱼测试] 已销毁运行时 GameObject。");
 					}
 					catch (Exception ex)
 					{
-						Debug.LogWarning($"[炸鱼测试] 销毁运行时 GameObject 时出错: {ex.Message}");
+						L.Warn($"[炸鱼测试] 销毁运行时 GameObject 时出错: {ex.Message}", ex);
 					}
 				}
 
 				_isEnabled = false;
-				Debug.Log("[炸鱼测试] 模组已禁用，资源清理完成。");
+				L.Info("[炸鱼测试] 模组已禁用，资源清理完成。");
 			}
 			catch (Exception ex)
 			{
-				Debug.LogError($"[炸鱼测试] OnDisable 清理过程中出错: {ex.Message}\n{ex.StackTrace}");
+				L.Error($"[炸鱼测试] OnDisable 清理过程中出错: {ex.Message}\n{ex.StackTrace}", ex);
 			}
 		}
 
@@ -258,7 +267,7 @@ namespace GrenadeFishing
                 _waterHelper.sphereCastRadius = Mathf.Max(0.4f, _waterHelper.sphereCastRadius);
                 _waterHelper.raycastDepth = Mathf.Max(1.5f, _waterHelper.raycastDepth);
 
-                Debug.Log($"[炸鱼测试] 水体检测配置：nearR={_waterHelper.nearCheckRadius:F2}, halfH={_waterHelper.verticalHalfExtent:F2}, sphereR={_waterHelper.sphereCastRadius:F2}, rayDepth={_waterHelper.raycastDepth:F2}, colliders={_waterHelper.GetCachedWaterColliders().Count}, bounds={_waterHelper.GetCachedWaterBounds().Count}");
+                L.Info($"[炸鱼测试] 水体检测配置：nearR={_waterHelper.nearCheckRadius:F2}, halfH={_waterHelper.verticalHalfExtent:F2}, sphereR={_waterHelper.sphereCastRadius:F2}, rayDepth={_waterHelper.raycastDepth:F2}, colliders={_waterHelper.GetCachedWaterColliders().Count}, bounds={_waterHelper.GetCachedWaterBounds().Count}");
             }
 
 			// 初始化 ModSetting UI（若可用）
@@ -267,12 +276,12 @@ namespace GrenadeFishing
 
         private void HandleAnyExplosion(Vector3 worldPos, bool wasWater)
         {
-            Debug.Log($"[炸鱼测试] 手雷爆炸位置: X={worldPos.x:F2}, Y={worldPos.y:F2}, Z={worldPos.z:F2} | 允许炸鱼: {(wasWater ? "是" : "否")}");
+            L.Info($"[炸鱼测试] 手雷爆炸位置: X={worldPos.x:F2}, Y={worldPos.y:F2}, Z={worldPos.z:F2} | 允许炸鱼: {(wasWater ? "是" : "否")}");
         }
 
         private void HandleWaterExplosion(Vector3 worldPos)
         {
-            Debug.Log($"[炸鱼测试] 检测到水体爆炸点（可出鱼）: X={worldPos.x:F2}, Y={worldPos.y:F2}, Z={worldPos.z:F2}");
+            L.Info($"[炸鱼测试] 检测到水体爆炸点（可出鱼）: X={worldPos.x:F2}, Y={worldPos.y:F2}, Z={worldPos.z:F2}");
 			// 步骤1 + 步骤3：生成待命鱼并在玩家附近生成真实掉落物（跳过第二步动画）
 			if (_fishLoot != null)
 			{
@@ -426,11 +435,11 @@ namespace GrenadeFishing
 				);
 
 				_settingsInitialized = true;
-				Debug.Log("[GrenadeFishing] 设置面板初始化完成。");
+				L.Info("[GrenadeFishing] 设置面板初始化完成。");
 			}
 			catch (Exception ex)
 			{
-				Debug.LogWarning($"[GrenadeFishing] 初始化设置 UI 失败：{ex.Message}");
+				L.Warn($"[GrenadeFishing] 初始化设置 UI 失败：{ex.Message}", ex);
 			}
 		}
 
