@@ -6,6 +6,13 @@
 
 一个为《逃离鸭科夫》(Escape from Duckov) 开发的趣味模组，让你可以用手雷、炸药甚至屎蛋来炸鱼！体验前所未有的暴力钓鱼方式。
 
+## 提示
+
+请不要花费过多精力查看本项目的代码以期学习到什么
+
+本项目唯一值得一看的实现点就是水面检测，并且也是屎山，只能说能用。
+
+
 ![炸鱼Mod预览](https://images.steamusercontent.com/ugc/10429282544672176288/A6C22078B6AA35020AD296858107F0C353A7C5B9/?imw=5000&imh=5000&ima=fit&impolicy=Letterbox&imcolor=%23000000&letterbox=false)
 
 ## 🎮 主要特性
