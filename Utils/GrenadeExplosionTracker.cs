@@ -135,69 +135,11 @@ namespace GrenadeFishing.Utils
 		/// </summary>
 		public void ScanAndSubscribe()
 		{
-			try
+			// 已由 Harmony 直接拦截 Grenade.Explode 与全局 ExplosionManager 替代本方法的目的功能
+			// 为空实现以避免额外的反射/轮询开销
+			if (diagnosticLogging)
 			{
-				int newlySubscribed = 0;
-				_scanCandidates.Clear();
-
-				// 优先尝试按类型名直接查找（避免全量 MonoBehaviour 枚举）
-				Type grenadeType = ResolveTypeByName(grenadeComponentNameHint);
-				if (grenadeType != null && typeof(Component).IsAssignableFrom(grenadeType))
-				{
-					var objs = FindObjectsOfType(grenadeType);
-					for (int i = 0; i < objs.Length; i++)
-					{
-						if (objs[i] is Component c) _scanCandidates.Add(c);
-					}
-				}
-				else
-				{
-					// 回退：扫描 MonoBehaviour，但仅保留名字包含 hint 的对象
-					var behaviours = FindObjectsOfType<MonoBehaviour>();
-					for (int i = 0; i < behaviours.Length; i++)
-					{
-						var mb = behaviours[i];
-						if (mb == null) continue;
-						var t = mb.GetType();
-						if (t.Name.Contains(grenadeComponentNameHint))
-						{
-							_scanCandidates.Add(mb);
-						}
-					}
-				}
-
-				// 遍历候选并尝试订阅，限制单次新增订阅数量
-				for (int i = 0; i < _scanCandidates.Count; i++)
-				{
-					if (newlySubscribed >= Mathf.Max(1, maxSubscribePerScan)) break;
-					var c = _scanCandidates[i];
-					if (c == null) continue;
-					if (_subscriptions.ContainsKey(c)) continue;
-					if (TrySubscribeToNoArgUnityEvent(c, explodeUnityEventMemberName))
-					{
-						newlySubscribed++;
-					}
-				}
-
-				// 清理失效对象
-				_deadSubs.Clear();
-				foreach (var kv in _subscriptions)
-				{
-					if (kv.Key == null) _deadSubs.Add(kv.Key);
-				}
-				for (int i = 0; i < _deadSubs.Count; i++)
-				{
-					_subscriptions.Remove(_deadSubs[i]);
-				}
-
-				if (diagnosticLogging)
-				{
-					Debug.Log($"[GrenadeExplosionTracker] Scan finished. new={newlySubscribed}, totalSubs={_subscriptions.Count}");
-				}
-			}
-			catch (Exception ex)
-			{
-				Debug.LogWarning($"[GrenadeExplosionTracker] Scan failed: {ex.Message}");
+				Debug.Log("[GrenadeExplosionTracker] ScanAndSubscribe 已被 Harmony 替代，跳过扫描。");
 			}
 		}
 

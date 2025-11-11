@@ -3,12 +3,12 @@ using HarmonyLib;
 using UnityEngine;
 
 // 全局爆炸创建入口 Hook：ExplosionManager.CreateExplosion
-[HarmonyPatch(typeof(ExplosionManager))]
-public static class ExplosionManagerPatch
+[HarmonyPatch(typeof(ExplosionManager))] //鸭科夫中爆炸管理器类名
+public static class ExplosionManagerPatch // 我的类名
 {
-	[HarmonyPostfix]
-	[HarmonyPatch("CreateExplosion")]
-	public static void Postfix(Vector3 center)
+	[HarmonyPostfix] // 后置钩子
+	[HarmonyPatch("CreateExplosion")] // 鸭科夫中爆炸管理器类中的CreateExplosion方法
+	public static void Postfix(Vector3 center) // 我的方法名
 	{
 		try
 		{

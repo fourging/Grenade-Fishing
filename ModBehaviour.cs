@@ -1,7 +1,5 @@
 ﻿using System;
 using UnityEngine;
-using Duckov.Modding;
-using Duckov.UI;
 using GrenadeFishing.Utils;
 using ItemStatsSystem;
 using HarmonyLib;
@@ -50,8 +48,7 @@ namespace GrenadeFishing
             {
                 GrenadeExplosionTracker.OnAnyExplosion += HandleAnyExplosion;
                 GrenadeExplosionTracker.OnWaterExplosion += HandleWaterExplosion;
-				// 订阅：主角开始使用物品（事件驱动触发一次性订阅，避免轮询）
-				CharacterMainControl.OnMainCharacterStartUseItem += OnItemUsed;
+
                 _subscribed = true;
             }
         }
