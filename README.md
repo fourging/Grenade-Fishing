@@ -19,23 +19,18 @@
 
 ## 📦 安装指南
 
-### 自动安装（推荐）
-
-1. 下载最新版本的模组文件
-2. 将 `GrenadeFishing` 文件夹复制到游戏目录下的 `Duckov_Data/Mods/` 文件夹中
-3. 启动游戏，模组将自动加载
+### steam
+[下载链接](https://steamcommunity.com/sharedfiles/filedetails/?id=3604062750)
 
 ### 手动安装
 
-1. 下载 `GrenadeFishing.dll` 文件
-2. 在游戏目录创建 `Duckov_Data/Mods/GrenadeFishing/` 文件夹
-3. 将 `GrenadeFishing.dll` 复制到该文件夹
-4. 创建 `info.ini` 文件并添加以下内容：
-   ```ini
-   name = GrenadeFishing
-   displayName = GrenadeFishing
-   description = 炸鱼，用手雷，用屎蛋，只要是投掷爆炸物都可以
-   ```
+1. 下载 `GrenadeFishing` 文件夹，[这里](https://github.com/fourging/Grenade-Fishing/tree/main/GrenadeFishing%E6%A8%A1%E7%BB%84%E8%B5%84%E6%BA%90)
+2. 在游戏目录放进去，形如 `Duckov_Data/Mods/GrenadeFishing/`
+3. 下载[0harmony补丁](https://steamcommunity.com/workshop/filedetails/?id=3589088839)，必须下载
+4. 下载[ModSetting](https://steamcommunity.com/workshop/filedetails/?id=3595729494)，可选
+5. 启动游戏
+
+
 
 ## 🎯 使用方法
 
@@ -47,7 +42,7 @@
 
 ### 快捷键
 
-- **右Shift** - 手动拾取附近的鱼类（可在设置中修改）
+- **右Shift** - 手动拾取附近的鱼类（可在设置中修改），只能拾取鱼类，不能白嫖钥匙房
 
 ## 🐟 鱼类系统
 
@@ -153,7 +148,7 @@ GrenadeFishing/
 │   ├── speakup.cs               # 语音系统
 │   └── WaterRegionHelper.cs     # 水域检测
 ├── Docs/                        # 文档
-├── GrenadeFishing测试模组/       # 测试模组
+├── GrenadeFishing模组/       # 模组
 └── GrenadeFishing.csproj        # 项目文件
 ```
 
@@ -182,7 +177,7 @@ GrenadeFishing/
 
 非常感谢以下人员对本项目的贡献：
 
-- [@Masaicker](https://steamcommunity.com/id/Masaicker) - 技术指导
+- [@Masaicker](https://steamcommunity.com/id/Masaicker) - 水面检测技术支持
 - @asvc - 水面检测技术支持
 
 没有两位大佬的指导，这个模组是无法完成的。
@@ -197,7 +192,7 @@ GrenadeFishing/
 
 ## 🔄 更新日志
 
-### v1.0.0 (2024-XX-XX)
+### v1.0.0 
 - 初始发布
 - 基础炸鱼功能
 - 保底机制
