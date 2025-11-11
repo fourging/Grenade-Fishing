@@ -4,6 +4,7 @@ using System.Collections;
 using System.Reflection;
 using UnityEngine;
 using UnityEngine.Events;
+using GrenadeFishing.Utils;
 
 namespace GrenadeFishing.Utils
 {

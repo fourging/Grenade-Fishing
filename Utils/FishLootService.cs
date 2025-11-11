@@ -101,7 +101,14 @@ namespace GrenadeFishing.Utils
 		public List<PendingFishData> GeneratePendingFish(CharacterMainControl player)
 		{
 			float luck = GetPlayerLuck01(player);
-			var selected = FishGenerator.GenerateByLuck(luck);
+			int grenadeCost = GrenadePriceTracker.GetLastGrenadeValueOr(0);
+			var tier = FishGenerator.ChooseTierByCost(grenadeCost);
+			// 可选：一次爆炸限制总价值（例如 sqrt(cost)*k 或 固定上限）
+			// 我这里示例使用 cost 的平方根乘以 50 作为 cap（你可以微调或移除）
+			int totalValueCap = Mathf.RoundToInt(Mathf.Sqrt(grenadeCost) * 50f);
+
+			var selected = FishGenerator.GenerateByLuck(luck, tier, totalValueCap);
+
 			var result = selected.Select(sel => new PendingFishData
 			{
 				displayName = sel.displayName,

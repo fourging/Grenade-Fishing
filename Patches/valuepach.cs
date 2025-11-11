@@ -16,8 +16,8 @@ public static class SkillGrenadePatch
             int itemValue = __instance.fromItem.Value;
             Debug.Log($"手雷价格: {itemValue}");
             
-            // 可以将价格信息存储在手雷实例中，供后续使用
-            // 例如通过组件或字典
+			// 记录最近一次手雷价格，供掉落逻辑读取
+			GrenadeFishing.Utils.GrenadePriceTracker.SetLastGrenadeValue(itemValue);
         }
     }
 }
