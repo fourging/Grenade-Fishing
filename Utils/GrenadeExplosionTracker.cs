@@ -30,16 +30,6 @@ namespace GrenadeFishing.Utils
 		/// </summary>
 		public static Action<Vector3> SpawnFishAt;
 
-		[Header("Auto Scan (Optional)")]
-		[Tooltip("是否启用自动扫描并尝试订阅 Grenade 的 onExplodeEvent (UnityEvent 无参)")]
-		public bool enableAutoScanGrenades = false;
-
-		[Tooltip("自动扫描频率（秒）")]
-		public float scanInterval = 2f;
-
-		[Tooltip("单次扫描最多新增订阅的数量上限（用于摊平成本）")]
-		public int maxSubscribePerScan = 8;
-
 		[Tooltip("用于匹配手雷组件类型名的关键字（大小写敏感）")]
 		public string grenadeComponentNameHint = "Grenade";
 
@@ -63,9 +53,6 @@ namespace GrenadeFishing.Utils
 		private static readonly Dictionary<Type, Func<Component, UnityEvent>> _eventAccessorCache =
 			new Dictionary<Type, Func<Component, UnityEvent>>();
 
-		// 扫描过程的临时缓冲，减少 GC 分配
-		private static readonly List<Component> _scanCandidates = new List<Component>(128);
-		private static readonly List<UnityEngine.Object> _deadSubs = new List<UnityEngine.Object>(32);
 		private static Collider[] _nearbyDebugBuffer; // 仅在启用调试时使用
 
 		private void Awake()
@@ -76,26 +63,6 @@ namespace GrenadeFishing.Utils
 			}
 		}
 
-		private void Start()
-		{
-			_scanTimer = 0f;
-			if (enableAutoScanGrenades)
-			{
-				ScanAndSubscribe();
-			}
-		}
-
-		private void Update()
-		{
-			if (!enableAutoScanGrenades) return;
-
-			_scanTimer -= Time.deltaTime;
-			if (_scanTimer <= 0f)
-			{
-				_scanTimer = Mathf.Max(0.2f, scanInterval);
-				ScanAndSubscribe();
-			}
-		}
 
 		/// <summary>
 		/// 手动上报一次爆炸位置
@@ -129,19 +96,7 @@ namespace GrenadeFishing.Utils
 			}
 		}
 
-		/// <summary>
-		/// 扫描场景并自动订阅疑似手雷组件上的无参 UnityEvent。
-		/// 说明：仅支持无参 UnityEvent（UnityEvent），不支持 UnityEvent&lt;T&gt; 泛型。
-		/// </summary>
-		public void ScanAndSubscribe()
-		{
-			// 已由 Harmony 直接拦截 Grenade.Explode 与全局 ExplosionManager 替代本方法的目的功能
-			// 为空实现以避免额外的反射/轮询开销
-			if (diagnosticLogging)
-			{
-				Debug.Log("[GrenadeExplosionTracker] ScanAndSubscribe 已被 Harmony 替代，跳过扫描。");
-			}
-		}
+
 
 		/// <summary>
 		/// 直接订阅场景中所有 Grenade 的 onExplodeEvent（无需反射）。
@@ -201,17 +156,7 @@ namespace GrenadeFishing.Utils
 			SubscribeExistingGrenadesDirect(maxCount);
 		}
 
-		/// <summary>
-		/// 手动订阅：传入一个组件实例，尝试在其上找到无参 UnityEvent 并订阅
-		/// </summary>
-		/// <param name="grenadeLike">疑似手雷组件</param>
-		/// <param name="unityEventMemberName">UnityEvent 字段或属性名</param>
-		/// <returns>成功与否</returns>
-		public bool SubscribeTo(Component grenadeLike, string unityEventMemberName = null)
-		{
-			if (grenadeLike == null) return false;
-			return TrySubscribeToNoArgUnityEvent(grenadeLike, unityEventMemberName ?? explodeUnityEventMemberName);
-		}
+
 
 		/// <summary>
 		/// 手动取消订阅（如果之前是通过本类订阅成功的）
@@ -227,44 +172,6 @@ namespace GrenadeFishing.Utils
 				}
 				catch { /* 忽略移除错误 */ }
 				_subscriptions.Remove(grenadeLike);
-			}
-		}
-
-		private bool TrySubscribeToNoArgUnityEvent(Component target, string memberName)
-		{
-			try
-			{
-				var t = target.GetType();
-				UnityEvent foundEvent = GetCachedNoArgUnityEvent(target, t, memberName);
-
-				if (foundEvent == null)
-				{
-					// 未找到无参 UnityEvent，提示用户改用 NotifyExplosion 或调整配置
-					return false;
-				}
-
-				UnityAction action = () =>
-				{
-					// 调试：列出手雷自身包围盒半径范围内的碰撞体（帮助定位误判）
-					if (logNearbyCollidersOnExplode)
-					{
-						DebugListNearbyCollidersNonAlloc(target, target.transform.position);
-					}
-					OnGrenadeExploded(target.transform.position);
-				};
-				foundEvent.AddListener(action);
-				_subscriptions[target] = (foundEvent, action);
-
-				if (diagnosticLogging)
-				{
-					Debug.Log($"[GrenadeExplosionTracker] Subscribed to {t.FullName}.{memberName} on {target.name}");
-				}
-				return true;
-			}
-			catch (Exception ex)
-			{
-				Debug.LogWarning($"[GrenadeExplosionTracker] Subscribe failed on {target}: {ex.Message}");
-				return false;
 			}
 		}
 

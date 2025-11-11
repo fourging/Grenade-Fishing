@@ -104,8 +104,6 @@ namespace GrenadeFishing
             if (_tracker != null)
             {
 				// 改为事件驱动为主：默认关闭轮询，必要时再开启为兜底
-				_tracker.enableAutoScanGrenades = false;
-                _tracker.grenadeComponentNameHint = string.IsNullOrEmpty(_tracker.grenadeComponentNameHint) ? "Grenade" : _tracker.grenadeComponentNameHint;
                 _tracker.explodeUnityEventMemberName = string.IsNullOrEmpty(_tracker.explodeUnityEventMemberName) ? "onExplodeEvent" : _tracker.explodeUnityEventMemberName;
 				// 启动时直接尝试订阅已存在的 Grenade（直连 UnityEvent，无反射）
 				_tracker.SubscribeExistingGrenadesDirect(8);
@@ -373,39 +371,12 @@ namespace GrenadeFishing
 			}
 		}
 
-		private void OnItemUsed(Item item)
-		{
-			if (item == null) return;
-			try
-			{
-				var tags = item.Tags;
-				// 以“Explosive”为主，兼容“Grenade/Throwable”等潜在命名
-				bool isExplosive =
-					(tags != null) && (
-						tags.Contains("Explosive") ||
-						tags.Contains("Grenade") ||
-						tags.Contains("Throwable")
-					);
-
-				if (isExplosive && _tracker != null)
-				{
-					// 延迟一小段时间，等待 Grenade 实例化后进行直连订阅
-					_tracker.RequestOneShotDirectSubscribe(0.05f, 16);
-				}
-			}
-			catch (Exception ex)
-			{
-				Debug.LogWarning($"[炸鱼测试] OnItemUsed 处理失败: {ex.Message}");
-			}
-		}
-
         private void OnDestroy()
         {
             if (_subscribed)
             {
                 GrenadeExplosionTracker.OnAnyExplosion -= HandleAnyExplosion;
                 GrenadeExplosionTracker.OnWaterExplosion -= HandleWaterExplosion;
-				CharacterMainControl.OnMainCharacterStartUseItem -= OnItemUsed;
                 _subscribed = false;
             }
         }
