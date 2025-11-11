@@ -7,9 +7,8 @@ namespace GrenadeFishing.Utils
 {
     /// <summary>
     /// 鱼类抽样与生成器（含“爆炸奇迹”机制）
-    /// 兼容原先调用：GenerateByLuck(float luck01)
-    /// 新增可选参数：grenadeTier OR grenadeCost, totalValueCap, miracleChance, miracleIgnoresCap
-    /// 价格将被映射为 costFactor (0..1) 用于微调高价值鱼概率和奇迹概率
+    /// 在生成逻辑的关键节点加入了角色说话调用（speakup）以增加幽默/调侃反馈。
+    /// 语音调用使用 CharacterMainControl.Main.transform 作为目标（若可用），并安全捕获异常以避免影响主流程。
     /// </summary>
     public static class FishGenerator
     {
@@ -152,6 +151,25 @@ namespace GrenadeFishing.Utils
         {
             // 添加调试日志
             L.DebugMsg($"[炸鱼保底调试] GenerateByLuck被调用，手雷价格={grenadeCost}");
+
+            // 适度的玩家反馈（幽默/调侃）
+            try
+            {
+                if (CharacterMainControl.Main != null)
+                {
+                    speakup.ShowRandomDialogue(
+                        CharacterMainControl.Main.transform,
+                        0.7f,
+                        LocalizationHelper.GetFormatted("Fish_Start_1", grenadeCost),
+                        LocalizationHelper.Get("Fish_Start_2"),
+                        LocalizationHelper.Get("Fish_Start_3")
+                    );
+                }
+            }
+            catch (Exception ex)
+            {
+                L.Warn("[炸鱼语音] 预启动语音播放失败：" + ex.Message, ex);
+            }
             
             // 检查保底机制（在随机生成之前）
             var guaranteedFish = CheckGuaranteedFish(grenadeCost);
@@ -159,6 +177,24 @@ namespace GrenadeFishing.Utils
             {
                 // 触发保底：返回保底鱼，跳过随机生成
                 L.Info($"[炸鱼保底] 触发保底机制！手雷价格={grenadeCost}，保底鱼={guaranteedFish.displayName}(价值={guaranteedFish.value})");
+
+                try
+                {
+                    if (CharacterMainControl.Main != null)
+                    {
+                        speakup.ShowRandomDialogue(
+                            CharacterMainControl.Main.transform,
+                            0.9f,
+                            LocalizationHelper.GetFormatted("Fish_Guaranteed_1", guaranteedFish.displayName),
+                            LocalizationHelper.Get("Fish_Guaranteed_2")
+                        );
+                    }
+                }
+                catch (Exception ex)
+                {
+                    L.Warn("[炸鱼语音] 保底语音播放失败：" + ex.Message, ex);
+                }
+
                 return new List<FishDefinition> { guaranteedFish };
             }
 
@@ -195,10 +231,25 @@ namespace GrenadeFishing.Utils
             if (UnityEngine.Random.value < dudChance)
             {
                 // 哑雷 -> 无产出
+                try
+                {
+                    if (CharacterMainControl.Main != null)
+                    {
+                        speakup.ShowRandomDialogue(CharacterMainControl.Main.transform, 1f,
+                            LocalizationHelper.Get("Fish_Dud_1"),
+                            LocalizationHelper.Get("Fish_Dud_2")
+                        );
+                    }
+                }
+                catch (Exception ex)
+                {
+                    L.Warn("[炸鱼语音] 哑雷语音播放失败：" + ex.Message, ex);
+                }
+
                 return results;
             }
 
-            // 如果调用方没有显式传入 miracleChance（仍为默认值），则按 costFactor 动态提高奇迹率（最多 +0.02）
+            // 如果调用方没有显式传入 miracleChance（仍为默认值），则按 costFactor 动态提高奇迹率（最多 +0.02)
             if (Math.Abs(miracleChance - DefaultMiracleChance) < 1e-6f)
             {
                 miracleChance = DefaultMiracleChance + (0.02f * costFactor); // 默认 1% -> 1%~3% 随价格增加
@@ -220,6 +271,21 @@ namespace GrenadeFishing.Utils
                     {
                         results.Add(miracleFish);
                         attemptsLeft = Math.Max(0, attemptsLeft - 1);
+
+                        try
+                        {
+                            if (CharacterMainControl.Main != null)
+                            {
+                                speakup.ShowRandomDialogue(CharacterMainControl.Main.transform, 0.6f,
+                                    LocalizationHelper.GetFormatted("Fish_Miracle_1", miracleFish.displayName),
+                                    LocalizationHelper.Get("Fish_Miracle_2")
+                                );
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            L.Warn("[炸鱼语音] 奇迹语音播放失败：" + ex.Message, ex);
+                        }
                     }
                     else
                     {
@@ -228,6 +294,20 @@ namespace GrenadeFishing.Utils
                         {
                             results.Add(alt);
                             attemptsLeft = Math.Max(0, attemptsLeft - 1);
+
+                            try
+                            {
+                                if (CharacterMainControl.Main != null)
+                                {
+                                    speakup.ShowRandomDialogue(CharacterMainControl.Main.transform, 0.6f,
+                                        LocalizationHelper.GetFormatted("Fish_Miracle_Replaced", alt.displayName)
+                                    );
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                L.Warn("[炸鱼语音] 奇迹替代语音失败：" + ex.Message, ex);
+                            }
                         }
                         // 否则放弃奇迹（保持 attemptsLeft）
                     }
@@ -283,6 +363,35 @@ namespace GrenadeFishing.Utils
 
                 results.Add(chosen);
                 usedValue += chosen.value;
+
+                // 语音提示：针对首条产出与大鱼给出独特提示，避免过度刷屏
+                try
+                {
+                    if (CharacterMainControl.Main != null)
+                    {
+                        if (producedCount == 0)
+                        {
+                            speakup.ShowRandomDialogue(CharacterMainControl.Main.transform, 0.6f,
+                                LocalizationHelper.GetFormatted("Fish_First_1", chosen.displayName),
+                                LocalizationHelper.Get("Fish_First_2")
+                            );
+                        }
+
+                        if (chosen.value > 6000)
+                        {
+                            // 大鱼单独强调
+                            speakup.ShowRandomDialogue(CharacterMainControl.Main.transform, 0.5f,
+                                LocalizationHelper.GetFormatted("Fish_Big_1", chosen.displayName),
+                                LocalizationHelper.Get("Fish_Big_2")
+                            );
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    L.Warn("[炸鱼语音] 正常产出语音播放失败：" + ex.Message, ex);
+                }
+
                 producedCount++;
             }
 
@@ -440,6 +549,7 @@ namespace GrenadeFishing.Utils
                     if (fish != null)
                     {
                         L.Info($"[炸鱼保底] 高价手雷保底触发！使用次数={count}（100的倍数），保底鱼={fish.displayName}(价值={fish.value})");
+                        try { if (CharacterMainControl.Main != null) speakup.ShowRandomDialogue(CharacterMainControl.Main.transform, 0.8f, LocalizationHelper.GetFormatted("Fish_Guaranteed_High100_1", fish.displayName), LocalizationHelper.Get("Fish_Guaranteed_High100_2")); } catch (Exception ex) { L.Warn("[炸鱼语音] 保底(100)语音失败："+ex.Message, ex); }
                         return fish;
                     }
                 }
@@ -452,6 +562,7 @@ namespace GrenadeFishing.Utils
                     if (fish != null)
                     {
                         L.Info($"[炸鱼保底] 高价手雷保底触发！使用次数={count}（50的倍数），保底鱼={fish.displayName}(价值={fish.value})");
+                        try { if (CharacterMainControl.Main != null) speakup.ShowRandomDialogue(CharacterMainControl.Main.transform, 0.8f, LocalizationHelper.GetFormatted("Fish_Guaranteed_High50_1", fish.displayName), LocalizationHelper.Get("Fish_Guaranteed_High50_2")); } catch (Exception ex) { L.Warn("[炸鱼语音] 保底(50)语音失败："+ex.Message, ex); }
                         return fish;
                     }
                 }
@@ -473,6 +584,7 @@ namespace GrenadeFishing.Utils
                     if (fish != null)
                     {
                         L.Info($"[炸鱼保底] 低价爆炸物保底触发！使用次数={count}（>114次），保底鱼={fish.displayName}(价值={fish.value})");
+                        try { if (CharacterMainControl.Main != null) speakup.ShowRandomDialogue(CharacterMainControl.Main.transform, 0.9f, LocalizationHelper.GetFormatted("Fish_Guaranteed_Low114_1", fish.displayName), LocalizationHelper.Get("Fish_Guaranteed_Low114_2")); } catch (Exception ex) { L.Warn("[炸鱼语音] 保底(114)语音失败："+ex.Message, ex); }
                         return fish;
                     }
                 }
@@ -485,6 +597,7 @@ namespace GrenadeFishing.Utils
                     if (fish != null)
                     {
                         L.Info($"[炸鱼保底] 低价爆炸物保底触发！使用次数={count}（51的倍数），保底鱼={fish.displayName}(价值={fish.value})");
+                        try { if (CharacterMainControl.Main != null) speakup.ShowRandomDialogue(CharacterMainControl.Main.transform, 0.8f, LocalizationHelper.GetFormatted("Fish_Guaranteed_Low51_1", fish.displayName), LocalizationHelper.Get("Fish_Guaranteed_Low51_2")); } catch (Exception ex) { L.Warn("[炸鱼语音] 保底(51)语音失败："+ex.Message, ex); }
                         return fish;
                     }
                 }
@@ -497,6 +610,7 @@ namespace GrenadeFishing.Utils
                     if (fish != null)
                     {
                         L.Info($"[炸鱼保底] 低价爆炸物保底触发！使用次数={count}（20的倍数），保底鱼={fish.displayName}(价值={fish.value})");
+                        try { if (CharacterMainControl.Main != null) speakup.ShowRandomDialogue(CharacterMainControl.Main.transform, 0.8f, LocalizationHelper.GetFormatted("Fish_Guaranteed_Low20_1", fish.displayName), LocalizationHelper.Get("Fish_Guaranteed_Low20_2")); } catch (Exception ex) { L.Warn("[炸鱼语音] 保底(20)语音失败："+ex.Message, ex); }
                         return fish;
                     }
                 }
@@ -633,6 +747,40 @@ namespace GrenadeFishing.Utils
             cf = Mathf.Sqrt(cf);
             cf = Mathf.Clamp01(cf);
             return cf;
+        }
+        #endregion
+
+        #region 语音辅助（安全调用）
+        // 这些辅助函数会在调用 speakup 前检查 CharacterMainControl.Main 避免空引用，
+        // 并捕获异常防止语音逻辑影响主流程。
+        private static void SafeShowRandomDialogue(float delay, params string[] lines)
+        {
+            try
+            {
+                if (CharacterMainControl.Main != null && lines != null && lines.Length > 0)
+                {
+                    speakup.ShowRandomDialogue(CharacterMainControl.Main.transform, delay, lines);
+                }
+            }
+            catch (Exception ex)
+            {
+                L.Warn("[炸鱼语音] SafeShowRandomDialogue 异常：" + ex.Message, ex);
+            }
+        }
+
+        private static void SafeShowDialogue(string line, float delay = 0f)
+        {
+            try
+            {
+                if (CharacterMainControl.Main != null && !string.IsNullOrEmpty(line))
+                {
+                    speakup.ShowDialogue(line, delay: delay);
+                }
+            }
+            catch (Exception ex)
+            {
+                L.Warn("[炸鱼语音] SafeShowDialogue 异常：" + ex.Message, ex);
+            }
         }
         #endregion
     }
