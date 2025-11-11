@@ -248,14 +248,8 @@ namespace GrenadeFishing
 				}
 			}
 
-            // 启用自动扫描手雷并立即进行一次扫描
-            if (_tracker != null)
-            {
-				// 改为事件驱动为主：默认关闭轮询，必要时再开启为兜底
-                _tracker.explodeUnityEventMemberName = string.IsNullOrEmpty(_tracker.explodeUnityEventMemberName) ? "onExplodeEvent" : _tracker.explodeUnityEventMemberName;
-				// 启动时直接尝试订阅已存在的 Grenade（直连 UnityEvent，无反射）
-				_tracker.SubscribeExistingGrenadesDirect(8);
-            }
+            // Harmony补丁方案已自动处理所有手雷爆炸事件，无需直接订阅
+            // 所有爆炸事件都会通过 GrenadeExplodePatch 自动捕获
 
             // 调试参数与日志增强
             if (_waterHelper != null)
