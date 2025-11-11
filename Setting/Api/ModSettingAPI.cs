@@ -344,11 +344,15 @@ public static class ModSettingAPI {
     }
 
     private static bool Available() {
-        return IsInit && modInfo.displayName != null && modInfo.name != null;
+        bool result = IsInit && modInfo.displayName != null && modInfo.name != null;
+        Debug.Log($"[ModSettingAPI] Available() 检查: IsInit={IsInit}, displayName={modInfo.displayName}, name={modInfo.name}, 结果={result}");
+        return result;
     }
 
     private static bool Available(string key) {
-        return IsInit && modInfo.displayName != null && modInfo.name != null && key != null;
+        bool result = IsInit && modInfo.displayName != null && modInfo.name != null && key != null;
+        Debug.Log($"[ModSettingAPI] Available(key) 检查: IsInit={IsInit}, displayName={modInfo.displayName}, name={modInfo.name}, key={key}, 结果={result}");
+        return result;
     }
 
     private static bool VersionAvailable() {

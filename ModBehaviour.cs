@@ -1,8 +1,10 @@
 ﻿using System;
 using UnityEngine;
 using GrenadeFishing.Utils;
+using GrenadeFishing.Setting;
 using ItemStatsSystem;
 using HarmonyLib;
+using static ModSettingAPI;
 
 namespace GrenadeFishing
 {
@@ -27,8 +29,6 @@ namespace GrenadeFishing
   private static Harmony? _harmonyInstance;
   private FishLootService? _fishLoot;
   private bool _settingsInitialized;
-  private KeyCode _pickupKey = KeyCode.RightShift;
-  private float _pickupRadius = 15f;
   private GameObject? _runtimeHost;
   private bool _isEnabled;
 
@@ -46,6 +46,9 @@ namespace GrenadeFishing
 			try
 			{
 				L.Info("[炸鱼测试] Mod已启用。自动检测手雷爆炸并打印是否为水体炸鱼点。");
+
+				// 初始化本地化系统
+				LocalizationHelper.Initialize();
 
 				// 初始化 Harmony 补丁（全局爆炸入口 Hook）
 				if (!_harmonyPatched)
@@ -75,8 +78,8 @@ namespace GrenadeFishing
 					_subscribed = true;
 				}
 
-				// 初始化 ModSetting UI（若可用）
-				TryInitSettingsUI();
+				// 初始化设置
+				InitSettings();
 
 				_isEnabled = true;
 				L.Info("[炸鱼测试] 模组初始化完成。");
@@ -119,7 +122,18 @@ namespace GrenadeFishing
 					}
 				}
 
-				// 2. 清理 ModSetting UI
+				// 2. 清理本地化系统
+				try
+				{
+					LocalizationHelper.Cleanup();
+					L.Info("[炸鱼测试] 已清理本地化系统。");
+				}
+				catch (Exception ex)
+				{
+					L.Warn($"[炸鱼测试] 清理本地化系统时出错: {ex.Message}", ex);
+				}
+
+				// 3. 清理设置
 				if (_settingsInitialized)
 				{
 					try
@@ -129,15 +143,16 @@ namespace GrenadeFishing
 							ModSettingAPI.RemoveMod();
 							L.Info("[炸鱼测试] 已移除 ModSetting UI。");
 						}
+						GrenadeFishingSettings.Clear();
 						_settingsInitialized = false;
 					}
 					catch (Exception ex)
 					{
-						L.Warn($"[炸鱼测试] 清理 ModSetting UI 时出错: {ex.Message}", ex);
+						L.Warn($"[炸鱼测试] 清理设置时出错: {ex.Message}", ex);
 					}
 				}
 
-				// 3. 清理 Harmony 补丁
+				// 4. 清理 Harmony 补丁
 				if (_harmonyPatched && _harmonyInstance != null)
 				{
 					try
@@ -153,12 +168,12 @@ namespace GrenadeFishing
 					}
 				}
 
-				// 4. 清理组件引用（不销毁，因为可能被其他模组使用）
+				// 5. 清理组件引用（不销毁，因为可能被其他模组使用）
 				_tracker = null;
 				_waterHelper = null;
 				_fishLoot = null;
 
-				// 5. 销毁运行时 GameObject（如果由本模组创建）
+				// 6. 销毁运行时 GameObject（如果由本模组创建）
 				if (_runtimeHost != null)
 				{
 					try
@@ -197,11 +212,11 @@ namespace GrenadeFishing
             // 仅在模组启用时处理输入
 			if (!_isEnabled) return;
 
-            // 无需按键，自动检测
-			if (_pickupKey != KeyCode.None && Input.GetKeyDown(_pickupKey))
-			{
-				ExecuteFishPickup();
-			}
+            // 检查手动拾取按键
+            if (GrenadeFishingSettings.PickupKey != KeyCode.None && Input.GetKeyDown(GrenadeFishingSettings.PickupKey))
+            {
+            	ExecuteFishPickup();
+            }
         }
 
         private void EnsureHelpers()
@@ -264,8 +279,8 @@ namespace GrenadeFishing
                 L.Info($"[炸鱼测试] 水体检测配置：nearR={_waterHelper.nearCheckRadius:F2}, halfH={_waterHelper.verticalHalfExtent:F2}, sphereR={_waterHelper.sphereCastRadius:F2}, rayDepth={_waterHelper.raycastDepth:F2}, colliders={_waterHelper.GetCachedWaterColliders().Count}, bounds={_waterHelper.GetCachedWaterBounds().Count}");
             }
 
-			// 初始化 ModSetting UI（若可用）
-			TryInitSettingsUI();
+			// 初始化设置（若可用）
+			InitSettings();
         }
 
         private void HandleAnyExplosion(Vector3 worldPos, bool wasWater)
@@ -286,16 +301,48 @@ namespace GrenadeFishing
 
 		protected override void OnAfterSetup()
 		{
-			// Mod 安装完成后尝试初始化设置 UI（兼容 ModSetting 先后加载顺序）
-			TryInitSettingsUI();
+			// Mod 安装完成后尝试初始化设置（兼容 ModSetting 先后加载顺序）
+			InitSettings();
 		}
 
-		private void TryInitSettingsUI()
+		private void InitSettings()
 		{
 			if (_settingsInitialized) return;
 			try
 			{
-				if (!ModSettingAPI.Init(info)) return;
+				L.Info("[GrenadeFishing] 开始初始化设置...");
+				L.Info($"[GrenadeFishing] 模组信息: name={info.name}, displayName={info.displayName}, description={info.description}");
+				L.Info($"[GrenadeFishing] info对象类型: {info.GetType().FullName}");
+				L.Info($"[GrenadeFishing] info对象已初始化");
+				
+				// 尝试手动设置模组信息（如果为空的话）
+				Duckov.Modding.ModInfo modInfoToUse = info;
+				if (string.IsNullOrEmpty(info.name))
+				{
+					L.Warn("[GrenadeFishing] 模组名称为空，创建新的模组信息对象");
+					// 创建一个新的模组信息对象（假设有构造函数）
+					modInfoToUse = new Duckov.Modding.ModInfo
+					{
+						name = "GrenadeFishing",
+						displayName = "GrenadeFishing",
+						description = "炸鱼测试模组"
+					};
+					L.Info($"[GrenadeFishing] 创建的新模组信息: name={modInfoToUse.name}, displayName={modInfoToUse.displayName}");
+				}
+				
+				bool initResult = ModSettingAPI.Init(modInfoToUse);
+				L.Info($"[GrenadeFishing] ModSettingAPI.Init 结果: {initResult}");
+				
+				if (!initResult)
+				{
+					L.Error("[GrenadeFishing] ModSettingAPI 初始化失败，无法显示设置界面");
+					return;
+				}
+				
+				// 初始化设置类
+				GrenadeFishingSettings.Init();
+				
+				// 确保FishLootService存在
 				if (_fishLoot == null)
 				{
 					_fishLoot = FindObjectOfType<FishLootService>();
@@ -310,130 +357,26 @@ namespace GrenadeFishing
 					}
 				}
 
-				// 定义键
-				const string kToggleSplash = "GF_EnableSplash";
-				const string kUpMin = "GF_UpBiasMin";
-				const string kUpMax = "GF_UpBiasMax";
-				const string kForceMin = "GF_ForceMin";
-				const string kForceMax = "GF_ForceMax";
-				const string kAngle = "GF_RandomAngle";
-				const string kGroup = "GF_SplashGroup";
-				const string kPickupKey = "GF_PickupKey";
-				const string kPickupRadius = "GF_PickupRadius";
-				const string kPickupGroup = "GF_PickupGroup";
+				// 订阅设置变更事件
+				GrenadeFishingSettings.OnEnableSplashChanged += (enabled) => {
+					if (_fishLoot != null) _fishLoot.enableExplosionSplash = enabled;
+				};
 
-				// 添加 UI 控件
-				ModSettingAPI.AddToggle(
-					kToggleSplash,
-					"开启爆炸飞溅效果",
-					_fishLoot.enableExplosionSplash,
-					val => { if (_fishLoot != null) _fishLoot.enableExplosionSplash = val; }
-				);
-
-				// 手动拾取相关设置
-				ModSettingAPI.AddKeybinding(
-					kPickupKey,
-					"手动拾取鱼类按键",
-					_pickupKey,
-					KeyCode.RightShift,
-					val => { _pickupKey = val; }
-				);
-
-				ModSettingAPI.AddSlider(
-					kPickupRadius,
-					"手动拾取范围半径",
-					_pickupRadius,
-					new Vector2(9f, 18.0f),
-					val => { _pickupRadius = Mathf.Clamp(val, 0.1f, 3.0f); },
-					2
-				);
-
-				ModSettingAPI.AddSlider(
-					kUpMin,
-					"飞溅向上分量最小值",
-					_fishLoot.explosionUpwardBiasMin,
-					new Vector2(0.1f, 0.95f),
-					val =>
-					{
-						if (_fishLoot == null) return;
-						_fishLoot.explosionUpwardBiasMin = Mathf.Clamp(val, 0.0f, _fishLoot.explosionUpwardBiasMax);
-					},
-					2
-				);
-
-				ModSettingAPI.AddSlider(
-					kUpMax,
-					"飞溅向上分量最大值",
-					_fishLoot.explosionUpwardBiasMax,
-					new Vector2(0.15f, 1.0f),
-					val =>
-					{
-						if (_fishLoot == null) return;
-						_fishLoot.explosionUpwardBiasMax = Mathf.Clamp(val, _fishLoot.explosionUpwardBiasMin, 1.0f);
-					},
-					2
-				);
-
-				ModSettingAPI.AddSlider(
-					kForceMin,
-					"飞溅力度最小值",
-					_fishLoot.explosionForceRange.x,
-					new Vector2(2f, 30f),
-					val =>
-					{
-						if (_fishLoot == null) return;
-						_fishLoot.explosionForceRange.x = Mathf.Min(val, _fishLoot.explosionForceRange.y - 0.1f);
-					},
-					1
-				);
-
-				ModSettingAPI.AddSlider(
-					kForceMax,
-					"飞溅力度最大值",
-					_fishLoot.explosionForceRange.y,
-					new Vector2(3f, 35f),
-					val =>
-					{
-						if (_fishLoot == null) return;
-						_fishLoot.explosionForceRange.y = Mathf.Max(val, _fishLoot.explosionForceRange.x + 0.1f);
-					},
-					1
-				);
-
-				ModSettingAPI.AddSlider(
-					kAngle,
-					"随机旋转角度",
-					_fishLoot.explosionRandomAngle,
-					new Vector2(0f, 360f),
-					val => { if (_fishLoot != null) _fishLoot.explosionRandomAngle = val; },
-					0
-				);
-
-				// 分组显示
-				ModSettingAPI.AddGroup(
-					kGroup,
-					"爆炸飞溅参数",
-					new System.Collections.Generic.List<string> { kToggleSplash, kUpMin, kUpMax, kForceMin, kForceMax, kAngle },
-					0.7f,
-					false,
-					true
-				);
-
-				ModSettingAPI.AddGroup(
-					kPickupGroup,
-					"拾取设置",
-					new System.Collections.Generic.List<string> { kPickupKey, kPickupRadius },
-					0.6f,
-					false,
-					false
-				);
+				// 初始化设置UI
+				GrenadeFishingSettings.InitSettingsUI(info);
+				
+				// 应用初始设置到FishLootService
+				if (_fishLoot != null)
+				{
+					_fishLoot.enableExplosionSplash = GrenadeFishingSettings.EnableExplosionSplash;
+				}
 
 				_settingsInitialized = true;
 				L.Info("[GrenadeFishing] 设置面板初始化完成。");
 			}
 			catch (Exception ex)
 			{
-				L.Warn($"[GrenadeFishing] 初始化设置 UI 失败：{ex.Message}", ex);
+				L.Warn($"[GrenadeFishing] 初始化设置失败：{ex.Message}", ex);
 			}
 		}
 
@@ -447,7 +390,7 @@ namespace GrenadeFishing
 
 			// 计算检测球
 			Vector3 detectionCenter = character.transform.position + Vector3.up * 0.5f + character.CurrentAimDirection * 0.2f;
-			float detectionRadius = Mathf.Max(0.05f, _pickupRadius);
+			float detectionRadius = Mathf.Max(0.05f, GrenadeFishingSettings.PickupRadius);
 
 			int interactableLayer = LayerMask.NameToLayer("Interactable");
 			int layerMask = (interactableLayer >= 0) ? (1 << interactableLayer) : (-1);
